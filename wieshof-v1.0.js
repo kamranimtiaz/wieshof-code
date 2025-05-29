@@ -209,180 +209,6 @@ class HeroImageManager {
   }
 }
 
-class TopicSwiperManager {
-  constructor(data) {
-    this.data = data;
-    this.swiper = null;
-    this.triggers = [];
-    this.tabItems = [];
-    this.currentTopic = null;
-    this.init();
-  }
-
-  init() {
-    this.setupElements();
-    this.initializeSwiper();
-    this.setupEventListeners();
-    this.setupDefaultTopic();
-  }
-
-  setupElements() {
-    this.triggers = document.querySelectorAll(".topic_button[data-topic]");
-    this.tabItems = Array.from(this.triggers).map((trigger) =>
-      trigger.closest(".swiper-slide")
-    );
-  }
-
-  initializeSwiper() {
-    if (this.swiper) {
-      this.swiper.destroy(true, true);
-    }
-
-    this.swiper = new Swiper(".swiper.is-topic", {
-      slidesPerView: 2.5,
-      spaceBetween: 0,
-      rewind: true,
-      navigation: {
-        nextEl: ".topic_next-btn",
-        prevEl: ".topic_prev-btn",
-      },
-      keyboard: {
-        enabled: true,
-        onlyInViewport: true,
-      },
-      breakpoints: {
-        389: { slidesPerView: 3.5 },
-        480: { slidesPerView: 3 },
-        768: { slidesPerView: 4 },
-      },
-      on: {
-        init: () => this.correctSwiperARIARoles(),
-        update: () => this.correctSwiperARIARoles(),
-      },
-    });
-
-    // Set global reference
-    window.topicSwiper = this.swiper;
-    
-    // Delayed check in case Swiper overrides attributes after initialization
-    setTimeout(() => this.correctSwiperARIARoles(), 1000);
-  }
-
-  correctSwiperARIARoles() {
-    const topicWrapper = document.querySelector(".swiper-wrapper.is-topic");
-    if (topicWrapper) {
-      topicWrapper.setAttribute("role", "tablist");
-
-      const topicSlides = topicWrapper.querySelectorAll(".swiper-slide");
-      topicSlides.forEach((slide) => {
-        slide.setAttribute("role", "tab");
-        if (!slide.hasAttribute("aria-selected")) {
-          slide.setAttribute("aria-selected", "false");
-        }
-      });
-
-      const anySelected = Array.from(topicSlides).some(
-        (slide) => slide.getAttribute("aria-selected") === "true"
-      );
-      if (!anySelected && topicSlides.length > 0) {
-        topicSlides[0].setAttribute("aria-selected", "true");
-      }
-    }
-  }
-
-  setupEventListeners() {
-    this.triggers.forEach((trigger) => {
-      trigger.addEventListener("click", () => {
-        this.handleTopicClick(trigger);
-      });
-    });
-  }
-
-  handleTopicClick(trigger) {
-    // Reset visual feedback for all triggers
-    this.triggers.forEach((btn) => {
-      btn.classList.remove("is-active");
-    });
-
-    // Reset ARIA attributes on tab elements
-    this.tabItems.forEach((tabItem) => {
-      if (tabItem) {
-        tabItem.setAttribute("aria-selected", "false");
-      }
-    });
-
-    // Set visual feedback for active trigger
-    trigger.classList.add("is-active");
-
-    // Set ARIA attributes for parent tab element
-    const parentTabItem = trigger.closest(".swiper-slide");
-    if (parentTabItem) {
-      parentTabItem.setAttribute("aria-selected", "true");
-    }
-
-    const topic = trigger.getAttribute("data-topic").toLowerCase();
-    this.currentTopic = topic;
-    
-    const evt = new CustomEvent("topicChange", {
-      detail: { topic, manual: true },
-    });
-    document.dispatchEvent(evt);
-
-    // Slide to active topic
-    const index = Array.from(this.triggers).findIndex((btn) => btn === trigger);
-    this.swiper.slideTo(index);
-  }
-
-  setupDefaultTopic() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlTopic = urlParams.get("topic");
-    let defaultTopic = urlTopic ? urlTopic.toLowerCase() : null;
-
-    if (!defaultTopic && this.triggers.length > 0) {
-      defaultTopic = this.triggers[0].getAttribute("data-topic").toLowerCase();
-    }
-
-    this.triggers.forEach((trigger, index) => {
-      const triggerTopic = trigger.getAttribute("data-topic").toLowerCase();
-      const isActive = triggerTopic === defaultTopic;
-
-      if (isActive) {
-        trigger.classList.add("is-active");
-        this.currentTopic = defaultTopic;
-      } else {
-        trigger.classList.remove("is-active");
-      }
-
-      const parentTabItem = trigger.closest(".swiper-slide");
-      if (parentTabItem) {
-        parentTabItem.setAttribute("aria-selected", isActive ? "true" : "false");
-      }
-
-      if (isActive) {
-        const evt = new CustomEvent("topicChange", {
-          detail: { topic: defaultTopic, manual: false },
-        });
-        document.dispatchEvent(evt);
-
-        setTimeout(() => {
-          this.swiper.slideTo(index);
-        }, 100);
-      }
-    });
-  }
-
-  destroy() {
-    if (this.swiper) {
-      this.swiper.destroy(true, true);
-      this.swiper = null;
-    }
-  }
-
-  getCurrentTopic() {
-    return this.currentTopic;
-  }
-}
-
 class GalleryTabsRenderer {
   constructor(jsonData) {
     this.data = jsonData;
@@ -452,260 +278,6 @@ class GalleryImageRenderer {
   updateSeason(newSeason) {
     this.season = newSeason;
     this.renderImages();
-  }
-}
-
-class GallerySwiperManager {
-  constructor(data, season = "summer") {
-    this.data = data;
-    this.season = season;
-    this.swiper = null;
-    this.triggerElements = [];
-    this.tabItems = [];
-    this.init();
-  }
-
-  init() {
-    this.setupElements();
-    this.renderGallerySlides();
-    this.initializeSwiper();
-    this.setupEventListeners();
-    this.updateActiveTab();
-  }
-
-  setupElements() {
-    this.triggerElements = document.querySelectorAll(".gallery_tabs");
-    this.tabItems = document.querySelectorAll(".gallery_tabs-collection-item");
-  }
-
-  renderGallerySlides() {
-    const sliderEl = document.querySelector(".swiper.is-gallery");
-    if (!sliderEl) return;
-
-    const wrapper = sliderEl.querySelector(".swiper-wrapper.is-gallery");
-    if (!wrapper) return;
-
-    // Remove template slide
-    const templateSlide = wrapper.querySelector(".swiper-slide.is-gallery");
-    if (templateSlide) templateSlide.remove();
-
-    // Render slides from legacy data (for backwards compatibility)
-    const categoriesData = document.querySelectorAll(
-      ".gallery_collection-item .gallery_data"
-    );
-
-    categoriesData.forEach((categoryEl) => {
-      const categoryId = categoryEl.getAttribute("data-gallery-id");
-      const imageEls = categoryEl.querySelectorAll(
-        ".gallery_img-url[data-img-url]"
-      );
-      imageEls.forEach((imgEl) => {
-        const imgURL = imgEl.getAttribute("data-img-url");
-        if (imgURL) {
-          const slide = document.createElement("div");
-          slide.classList.add(
-            "swiper-slide",
-            "is-gallery",
-            "swiper-backface-hidden"
-          );
-          slide.setAttribute("data-gallery-id", categoryId);
-          slide.setAttribute("data-topic-target", categoryId.toLowerCase());
-          const img = document.createElement("img");
-          img.src = imgURL;
-          img.loading = "lazy";
-          img.classList.add("gallery_img");
-          slide.appendChild(img);
-          wrapper.appendChild(slide);
-        }
-      });
-    });
-  }
-
-  initializeSwiper() {
-    if (this.swiper) {
-      this.swiper.destroy(true, true);
-    }
-
-    this.swiper = new Swiper(".swiper.is-gallery", {
-      ...swiperAnimationConfig,
-      slidesPerView: 1.2,
-      spaceBetween: 16,
-      centeredSlides: false,
-      initialSlide: 0,
-      rewind: true,
-      navigation: {
-        nextEl: ".gallery_next-btn",
-        prevEl: ".gallery_prev-btn",
-      },
-      keyboard: { enabled: true, onlyInViewport: true },
-      breakpoints: {
-        480: {
-          slidesPerView: 2.2,
-          spaceBetween: 16,
-          centeredSlides: false,
-          initialSlide: 0,
-        },
-        992: {
-          slidesPerView: 2,
-          spaceBetween: 32,
-          centeredSlides: true,
-          initialSlide: 1,
-        },
-      },
-    });
-
-    // Set global reference
-    window.gallerySwiper = this.swiper;
-
-    // Setup slide change listener
-    this.swiper.on("slideChange", () => this.updateActiveTab());
-  }
-
-  setupEventListeners() {
-    this.triggerElements.forEach((trigger) => {
-      trigger.addEventListener("click", () => {
-        this.handleTabClick(trigger);
-      });
-    });
-
-    // Listen for topic changes
-    document.addEventListener("topicChange", (e) => {
-      this.handleTopicChange(e.detail.topic);
-    });
-  }
-
-  handleTabClick(trigger) {
-    const targetCategory = trigger.getAttribute("data-gallery-id");
-    const wrapper = document.querySelector(".swiper-wrapper.is-gallery");
-    const allSlides = wrapper.querySelectorAll(".swiper-slide.is-gallery");
-    let targetIndex = 0;
-
-    allSlides.forEach((slide, idx) => {
-      if (
-        slide.getAttribute("data-gallery-id") === targetCategory &&
-        targetIndex === 0
-      ) {
-        targetIndex = idx;
-      }
-    });
-
-    this.swiper.slideTo(targetIndex);
-
-    // Handle ARIA attributes
-    const parentTabItem =
-      trigger.closest('[role="tab"]') ||
-      trigger.closest(".gallery_tabs-collection-item");
-
-    if (parentTabItem) {
-      this.tabItems.forEach((item) => {
-        item.setAttribute("aria-selected", "false");
-      });
-
-      parentTabItem.setAttribute("aria-selected", "true");
-
-      this.triggerElements.forEach((t) =>
-        t.removeAttribute("aria-selected")
-      );
-    }
-
-    this.updateActiveTab();
-  }
-
-  handleTopicChange(selectedTopic) {
-    const targetIndex = this.findSlideIndexByTopic(selectedTopic);
-    if (targetIndex !== -1) {
-      this.swiper.slideTo(targetIndex);
-    }
-    this.updateTabSelection(selectedTopic);
-  }
-
-  findSlideIndexByTopic(selectedTopic) {
-    let targetIndex = 0;
-    this.swiper.slides.forEach((slide, idx) => {
-      const slideTopic = (
-        slide.getAttribute("data-topic-target") ||
-        slide.getAttribute("data-gallery-id") ||
-        ""
-      ).toLowerCase();
-      if (slideTopic === selectedTopic && targetIndex === 0) {
-        targetIndex = idx;
-      }
-    });
-    return targetIndex;
-  }
-
-  updateTabSelection(selectedTopic) {
-    this.triggerElements.forEach((tab) => {
-      tab.classList.remove("is-custom-current");
-      const tabTopic = (
-        tab.getAttribute("data-topic-target") ||
-        tab.getAttribute("data-gallery-id") ||
-        ""
-      ).toLowerCase();
-
-      if (tabTopic === selectedTopic) {
-        tab.classList.add("is-custom-current");
-      }
-
-      const parentTab = tab.closest('[role="tab"]');
-      if (parentTab) {
-        parentTab.setAttribute(
-          "aria-selected",
-          tabTopic === selectedTopic ? "true" : "false"
-        );
-        tab.removeAttribute("aria-selected");
-      } else {
-        tab.setAttribute(
-          "aria-selected",
-          tabTopic === selectedTopic ? "true" : "false"
-        );
-      }
-    });
-  }
-
-  updateActiveTab() {
-    const activeSlide = this.swiper.slides[this.swiper.activeIndex];
-    const activeCategory = activeSlide.getAttribute("data-gallery-id");
-
-    // Reset visual highlighting
-    this.triggerElements.forEach((trigger) =>
-      trigger.classList.remove("is-custom-current")
-    );
-
-    // Highlight corresponding trigger element
-    const activeTrigger = document.querySelector(
-      `.gallery_tabs[data-gallery-id="${activeCategory}"]`
-    );
-    if (activeTrigger) {
-      activeTrigger.classList.add("is-custom-current");
-    }
-
-    // Set ARIA attributes correctly on actual tab elements
-    this.tabItems.forEach((tabItem) => {
-      const childTrigger = tabItem.querySelector(
-        `.gallery_tabs[data-gallery-id]`
-      );
-      if (childTrigger) {
-        const tabCategory = childTrigger.getAttribute("data-gallery-id");
-        const isActive = tabCategory === activeCategory;
-
-        tabItem.setAttribute("aria-selected", isActive ? "true" : "false");
-        childTrigger.removeAttribute("aria-selected");
-      }
-    });
-  }
-
-  updateSeason(newSeason) {
-    this.season = newSeason;
-    this.destroy();
-    this.init();
-  }
-
-  destroy() {
-    if (this.swiper) {
-      this.swiper.destroy(true, true);
-      this.swiper = null;
-    }
   }
 }
 
@@ -891,8 +463,8 @@ class GallerySystem {
 
     this.heroImageManager = null;
     this.galleryImageRenderer = null;
-    this.topicSwiperManager = null;
-    this.gallerySwiperManager = null;
+    this.topicSwiper = null;
+    this.gallerySwiper = null;
     this.quoteImageManager = null;
 
     this.init();
@@ -902,6 +474,7 @@ class GallerySystem {
     this.renderStaticContent();
     this.initializeComponents();
     this.setupEventListeners();
+    this.initializeSwipers();
 
     new SeasonSwitchManager(this);
   }
@@ -925,16 +498,67 @@ class GallerySystem {
       this.data,
       this.currentSeason
     );
-    
-    // Initialize Swiper managers
-    this.topicSwiperManager = new TopicSwiperManager(this.data);
-    this.gallerySwiperManager = new GallerySwiperManager(this.data, this.currentSeason);
   }
 
   setupEventListeners() {
     document.addEventListener("topicChange", (e) => {
       this.currentTopic = e.detail.topic.toLowerCase();
+      this.applyTopicFilter();
     });
+  }
+
+  initializeSwipers() {
+    if (this.topicSwiper) this.topicSwiper.destroy(true, true);
+    if (this.gallerySwiper) this.gallerySwiper.destroy(true, true);
+
+    this.topicSwiper = new Swiper(".swiper.is-topic", {
+      slidesPerView: 2.5,
+      spaceBetween: 0,
+      rewind: true,
+      navigation: {
+        nextEl: ".topic_next-btn",
+        prevEl: ".topic_prev-btn",
+      },
+      keyboard: {
+        enabled: true,
+        onlyInViewport: true,
+      },
+      breakpoints: {
+        389: { slidesPerView: 3.5 },
+        480: { slidesPerView: 3 },
+        768: { slidesPerView: 4 },
+      },
+    });
+
+    this.gallerySwiper = new Swiper(".swiper.is-gallery", {
+      ...swiperAnimationConfig,
+      slidesPerView: 1.2,
+      spaceBetween: 16,
+      centeredSlides: false,
+      initialSlide: 0,
+      rewind: true,
+      navigation: {
+        nextEl: ".gallery_next-btn",
+        prevEl: ".gallery_prev-btn",
+      },
+      keyboard: { enabled: true, onlyInViewport: true },
+      breakpoints: {
+        480: {
+          slidesPerView: 2.2,
+          spaceBetween: 16,
+          centeredSlides: false,
+          initialSlide: 0,
+        },
+        992: {
+          slidesPerView: 2,
+          spaceBetween: 32,
+          centeredSlides: true,
+          initialSlide: 1,
+        },
+      },
+    });
+
+    window.gallerySwiper = this.gallerySwiper;
   }
 
   switchSeason(newSeason) {
@@ -946,19 +570,61 @@ class GallerySystem {
     this.galleryImageRenderer.updateSeason(newSeason);
     this.quoteImageManager.updateSeason(newSeason, this.currentTopic);
 
-    // Update swiper managers
-    if (this.gallerySwiperManager) {
-      this.gallerySwiperManager.updateSeason(newSeason);
-    }
+    this.initializeSwipers();
 
     if (currentTopic) {
       setTimeout(() => {
-        const evt = new CustomEvent("topicChange", {
-          detail: { topic: currentTopic, manual: false },
-        });
-        document.dispatchEvent(evt);
+        this.applyTopicFilter();
       }, 100);
     }
+  }
+
+  applyTopicFilter() {
+    if (!this.gallerySwiper || !this.currentTopic) return false;
+
+    let targetIndex = 0;
+    this.gallerySwiper.slides.forEach((slide, idx) => {
+      const slideTopic = (
+        slide.getAttribute("data-topic-target") ||
+        slide.getAttribute("data-gallery-id") ||
+        ""
+      ).toLowerCase();
+      if (slideTopic === this.currentTopic && targetIndex === 0) {
+        targetIndex = idx;
+      }
+    });
+
+    this.gallerySwiper.slideTo(targetIndex);
+
+    const galleryTabs = document.querySelectorAll(".gallery_tabs");
+    galleryTabs.forEach((tab) => {
+      tab.classList.remove("is-custom-current");
+      const tabTopic = (
+        tab.getAttribute("data-topic-target") ||
+        tab.getAttribute("data-gallery-id") ||
+        ""
+      ).toLowerCase();
+
+      if (tabTopic === this.currentTopic) {
+        tab.classList.add("is-custom-current");
+      }
+
+      const parentTab = tab.closest('[role="tab"]');
+      if (parentTab) {
+        parentTab.setAttribute(
+          "aria-selected",
+          tabTopic === this.currentTopic ? "true" : "false"
+        );
+        tab.removeAttribute("aria-selected");
+      } else {
+        tab.setAttribute(
+          "aria-selected",
+          tabTopic === this.currentTopic ? "true" : "false"
+        );
+      }
+    });
+
+    return true;
   }
 }
 
@@ -1008,8 +674,382 @@ document.addEventListener("DOMContentLoaded", () => {
       },
     });
   });
-});
+
+  /******************************************************************************
+   * TOPIC BUTTONS & DEFAULT SETUP
+   *****************************************************************************/
+  // Trigger-Elemente (Ebene 3) - diese enthalten eigentlich die Klickfunktionalität
+  const topicTriggers = document.querySelectorAll(".topic_button[data-topic]");
+
+  // Tab-Elemente (Ebene 2) - diese sollten role="tab" haben
+  const topicTabItems = Array.from(topicTriggers).map((trigger) =>
+    trigger.closest(".swiper-slide")
+  );
+
+  topicTriggers.forEach((trigger) => {
+    trigger.addEventListener("click", function () {
+      // Visuelles Feedback für Trigger zurücksetzen
+      topicTriggers.forEach((btn) => {
+        btn.classList.remove("is-active");
+      });
+
+      // ARIA-Attribute auf Tab-Elementen zurücksetzen
+      topicTabItems.forEach((tabItem) => {
+        if (tabItem) {
+          tabItem.setAttribute("aria-selected", "false");
+        }
+      });
+
+      // Visuelles Feedback für aktiven Trigger
+      trigger.classList.add("is-active");
+
+      // ARIA-Attribute für übergeordnetes Tab-Element setzen
+      const parentTabItem = trigger.closest(".swiper-slide");
+      if (parentTabItem) {
+        parentTabItem.setAttribute("aria-selected", "true");
+      }
+
+      const topic = trigger.getAttribute("data-topic").toLowerCase();
+      const evt = new CustomEvent("topicChange", {
+        detail: { topic, manual: true },
+      });
+      document.dispatchEvent(evt);
+
+      if (window.topicSwiper) {
+        const index = Array.from(topicTriggers).findIndex(
+          (btn) => btn === trigger
+        );
+        window.topicSwiper.slideTo(index);
+      }
+    });
+  });
+
+  // Default-Topic aus URL oder erstes Element
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlTopic = urlParams.get("topic");
+  let defaultTopic = urlTopic ? urlTopic.toLowerCase() : null;
+
+  if (!defaultTopic && topicTriggers.length > 0) {
+    defaultTopic = topicTriggers[0].getAttribute("data-topic").toLowerCase();
+  }
+
+  topicTriggers.forEach((trigger, index) => {
+    const triggerTopic = trigger.getAttribute("data-topic").toLowerCase();
+    const isActive = triggerTopic === defaultTopic;
+
+    // Visuelles Feedback
+    if (isActive) {
+      trigger.classList.add("is-active");
+    } else {
+      trigger.classList.remove("is-active");
+    }
+
+    // ARIA-Attribute auf Tab-Element setzen
+    const parentTabItem = trigger.closest(".swiper-slide");
+    if (parentTabItem) {
+      parentTabItem.setAttribute("aria-selected", isActive ? "true" : "false");
+    }
+
+    if (isActive) {
+      const evt = new CustomEvent("topicChange", {
+        detail: { topic: defaultTopic, manual: false },
+      });
+      document.dispatchEvent(evt);
+
+      setTimeout(() => {
+        if (window.topicSwiper) {
+          window.topicSwiper.slideTo(index);
+        }
+      }, 100);
+    }
+  });
+
+  /******************************************************************************
+   * TOPIC CHANGE LISTENER FOR GALLERY
+   *****************************************************************************/
+  document.addEventListener("topicChange", function (e) {
+    const selectedTopic = e.detail.topic;
+    function applyTopicFilter() {
+      if (!window.gallerySwiper) return false;
+      let targetIndex = 0;
+      window.gallerySwiper.slides.forEach((slide, idx) => {
+        const slideTopic = (
+          slide.getAttribute("data-topic-target") ||
+          slide.getAttribute("data-gallery-id") ||
+          ""
+        ).toLowerCase();
+        if (slideTopic === selectedTopic && targetIndex === 0) {
+          targetIndex = idx;
+        }
+      });
+      window.gallerySwiper.slideTo(targetIndex);
+
+      // Verbesserte Handling von gallery_tabs Elementen
+      const galleryTabs = document.querySelectorAll(".gallery_tabs");
+      galleryTabs.forEach((tab) => {
+        // Visuelles Feedback - is-custom-current Klasse
+        tab.classList.remove("is-custom-current");
+        const tabTopic = (
+          tab.getAttribute("data-topic-target") ||
+          tab.getAttribute("data-gallery-id") ||
+          ""
+        ).toLowerCase();
+        if (tabTopic === selectedTopic) {
+          tab.classList.add("is-custom-current");
+        }
+
+        // Suche das übergeordnete Element mit role="tab", falls vorhanden
+        const parentTab = tab.closest('[role="tab"]');
+        if (parentTab) {
+          // Setze aria-selected auf dem korrekten Tab-Element
+          parentTab.setAttribute(
+            "aria-selected",
+            tabTopic === selectedTopic ? "true" : "false"
+          );
+          // Entferne aria-selected vom Kind-Element, um Konflikte zu vermeiden
+          tab.removeAttribute("aria-selected");
+        } else {
+          // Fallback: Wenn kein übergeordnetes Tab-Element gefunden wurde
+          tab.setAttribute(
+            "aria-selected",
+            tabTopic === selectedTopic ? "true" : "false"
+          );
+        }
+      });
+      return true;
+    }
+    if (!applyTopicFilter()) {
+      setTimeout(applyTopicFilter, 300);
+    }
+  });
   
+  /******************************************************************************
+   * TOPIC SWIPER
+   *****************************************************************************/
+
+  // ARIA-Rollen für alle Swiper korrigieren
+  function correctSwiperARIARoles() {
+    // Korrektur für den Topic-Filter (Tabs)
+    const topicWrapper = document.querySelector(".swiper-wrapper.is-topic");
+    if (topicWrapper) {
+      // Topic Filter braucht ein Tablist/Tab Modell
+      topicWrapper.setAttribute("role", "tablist");
+
+      // Die Slides selbst sind jetzt die Tabs (nicht mehr presentation)
+      const topicSlides = topicWrapper.querySelectorAll(".swiper-slide");
+      topicSlides.forEach((slide) => {
+        slide.setAttribute("role", "tab");
+        // Initialen aria-selected Zustand setzen, falls nicht schon gesetzt
+        if (!slide.hasAttribute("aria-selected")) {
+          slide.setAttribute("aria-selected", "false");
+        }
+      });
+
+      // Setze das erste Slide als selected, falls keines selected ist
+      const anySelected = Array.from(topicSlides).some(
+        (slide) => slide.getAttribute("aria-selected") === "true"
+      );
+      if (!anySelected && topicSlides.length > 0) {
+        topicSlides[0].setAttribute("aria-selected", "true");
+      }
+    }
+  }
+
+  window.topicSwiper = new Swiper(".swiper.is-topic", {
+    slidesPerView: 2.5,
+    spaceBetween: 0,
+    rewind: true,
+    navigation: {
+      nextEl: ".topic_next-btn",
+      prevEl: ".topic_prev-btn",
+    },
+    keyboard: {
+      enabled: true,
+      onlyInViewport: true,
+    },
+    breakpoints: {
+      389: {
+        slidesPerView: 3.5,
+      },
+      480: {
+        slidesPerView: 3,
+      },
+      768: {
+        slidesPerView: 4,
+      },
+    },
+    on: {
+      init: correctSwiperARIARoles,
+      // Falls Swiper die Rollen bei Updates zurücksetzt
+      update: correctSwiperARIARoles,
+    },
+  });
+
+  // Verzögerter Check für den Fall, dass Swiper die Attribute nach der Initialisierung überschreibt
+  setTimeout(correctSwiperARIARoles, 1000);
+
+  /******************************************************************************
+   * MAIN BILDERGALERIE MIT SWIPER
+   *****************************************************************************/
+  const sliderEl = document.querySelector(".swiper.is-gallery");
+  if (!sliderEl) return;
+
+  const wrapper = sliderEl.querySelector(".swiper-wrapper.is-gallery");
+  if (!wrapper) return;
+
+  const templateSlide = wrapper.querySelector(".swiper-slide.is-gallery");
+  if (templateSlide) templateSlide.remove();
+
+  const categoriesData = document.querySelectorAll(
+    ".gallery_collection-item .gallery_data"
+  );
+
+  // "triggerElements" (Ebene 3)
+  // Diese Elemente sind nicht die eigentlichen Tabs, sondern nur Trigger
+  const galleryTriggerElements = document.querySelectorAll(".gallery_tabs");
+
+  // Finde die tatsächlichen Tab-Elemente (Ebene 2)
+  const galleryTabItems = document.querySelectorAll(
+    ".gallery_tabs-collection-item"
+  );
+
+  categoriesData.forEach((categoryEl) => {
+    const categoryId = categoryEl.getAttribute("data-gallery-id");
+    const imageEls = categoryEl.querySelectorAll(
+      ".gallery_img-url[data-img-url]"
+    );
+    imageEls.forEach((imgEl) => {
+      const imgURL = imgEl.getAttribute("data-img-url");
+      if (imgURL) {
+        const slide = document.createElement("div");
+        slide.classList.add(
+          "swiper-slide",
+          "is-gallery",
+          "swiper-backface-hidden"
+        );
+        slide.setAttribute("data-gallery-id", categoryId);
+        slide.setAttribute("data-topic-target", categoryId.toLowerCase());
+        const img = document.createElement("img");
+        img.src = imgURL;
+        img.loading = "lazy";
+        img.classList.add("gallery_img");
+        slide.appendChild(img);
+        wrapper.appendChild(slide);
+      }
+    });
+  });
+
+  window.gallerySwiper = new Swiper(".swiper.is-gallery", {
+    ...swiperAnimationConfig,
+    slidesPerView: 1.2,
+    spaceBetween: 16,
+    centeredSlides: false,
+    initialSlide: 0,
+    rewind: true,
+    navigation: {
+      nextEl: ".gallery_next-btn",
+      prevEl: ".gallery_prev-btn",
+    },
+    keyboard: { enabled: true, onlyInViewport: true },
+    breakpoints: {
+      480: {
+        slidesPerView: 2.2,
+        spaceBetween: 16,
+        centeredSlides: false,
+        initialSlide: 0,
+      },
+      992: {
+        slidesPerView: 2,
+        spaceBetween: 32,
+        centeredSlides: true,
+        initialSlide: 1,
+      },
+    },
+  });
+
+  function updateActiveTab() {
+    const activeSlide =
+      window.gallerySwiper.slides[window.gallerySwiper.activeIndex];
+    const activeCategory = activeSlide.getAttribute("data-gallery-id");
+
+    // Zuerst alle visuellen Hervorhebungen zurücksetzen
+    galleryTriggerElements.forEach((trigger) =>
+      trigger.classList.remove("is-custom-current")
+    );
+
+    // Dann das entsprechende Trigger-Element visuell hervorheben
+    const activeTrigger = document.querySelector(
+      `.gallery_tabs[data-gallery-id="${activeCategory}"]`
+    );
+    if (activeTrigger) {
+      activeTrigger.classList.add("is-custom-current");
+    }
+
+    // ARIA-Attribute korrekt auf den tatsächlichen Tab-Elementen (Ebene 2) setzen
+    galleryTabItems.forEach((tabItem) => {
+      const childTrigger = tabItem.querySelector(
+        `.gallery_tabs[data-gallery-id]`
+      );
+      if (childTrigger) {
+        const tabCategory = childTrigger.getAttribute("data-gallery-id");
+        const isActive = tabCategory === activeCategory;
+
+        // ARIA nur auf dem Tab-Element (Ebene 2) setzen
+        tabItem.setAttribute("aria-selected", isActive ? "true" : "false");
+
+        // Sicherstellen, dass das Trigger-Element (Ebene 3) kein aria-selected hat
+        childTrigger.removeAttribute("aria-selected");
+      }
+    });
+  }
+
+  // Event-Listener für Klicks auf Trigger-Elemente
+  galleryTriggerElements.forEach((trigger) => {
+    trigger.addEventListener("click", function () {
+      const targetCategory = trigger.getAttribute("data-gallery-id");
+      const allSlides = wrapper.querySelectorAll(".swiper-slide.is-gallery");
+      let targetIndex = 0;
+
+      allSlides.forEach((slide, idx) => {
+        if (
+          slide.getAttribute("data-gallery-id") === targetCategory &&
+          targetIndex === 0
+        ) {
+          targetIndex = idx;
+        }
+      });
+
+      window.gallerySwiper.slideTo(targetIndex);
+
+      // ARIA-Fix: Setze ARIA-Attribute NUR auf Ebene 2-Elementen (Tab-Items)
+      // Finde zuerst das übergeordnete Tab-Element für diesen Trigger
+      const parentTabItem =
+        trigger.closest('[role="tab"]') ||
+        trigger.closest(".gallery_tabs-collection-item");
+
+      if (parentTabItem) {
+        // Alle Tab-Elemente zurücksetzen
+        galleryTabItems.forEach((item) => {
+          item.setAttribute("aria-selected", "false");
+        });
+
+        // Das aktive Tab-Element auf true setzen
+        parentTabItem.setAttribute("aria-selected", "true");
+
+        // Sicherstellen, dass Trigger-Elemente kein aria-selected haben
+        galleryTriggerElements.forEach((t) =>
+          t.removeAttribute("aria-selected")
+        );
+      }
+
+      updateActiveTab();
+    });
+  });
+
+  window.gallerySwiper.on("slideChange", updateActiveTab);
+  updateActiveTab();
+});
+
 /******************************************************************************
  * DATE PICKER & FORM SETUP
  *****************************************************************************/
