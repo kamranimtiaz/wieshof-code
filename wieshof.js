@@ -115,6 +115,7 @@ class HeroImageManager {
     this.topicToImageMap = this.buildImageMap();
     this.heroImg = document.querySelector(".hero_img");
     this.currentTopic = null;
+    this.hasLoadedInitialImage = false; // Flag to prevent initial loading
     this.init();
   }
 
@@ -137,8 +138,14 @@ class HeroImageManager {
     this.season = newSeason;
     this.topicToImageMap = this.buildImageMap();
 
-    if (currentTopic && this.topicToImageMap[currentTopic.toLowerCase()]) {
-      this.loadHeroImage(currentTopic.toLowerCase(), true);
+    // Only load image if initial loading period has passed
+    if (!this.hasLoadedInitialImage) return;
+
+    // Use the instance's currentTopic if no topic is passed
+    const topicToCheck = currentTopic || this.currentTopic;
+    
+    if (topicToCheck && this.topicToImageMap[topicToCheck.toLowerCase()]) {
+      this.loadHeroImage(topicToCheck.toLowerCase(), true);
     }
   }
 
@@ -154,17 +161,25 @@ class HeroImageManager {
 
     if (paramTopic && this.topicToImageMap[paramTopic.toLowerCase()]) {
       this.currentTopic = paramTopic.toLowerCase();
-      this.loadHeroImage(this.currentTopic);
-    } else {
-      this.showHeroImage();
+      // Don't load hero image at start due to hasLoadedInitialImage flag
     }
+    
+    // Always show the hero image element (with placeholder)
+    this.showHeroImage();
+    
+    // Set flag to true after initial launch to allow normal functionality
+    setTimeout(() => {
+      this.hasLoadedInitialImage = true;
+    }, 100);
   }
 
   setupTopicChangeListener() {
     document.addEventListener("topicChange", (e) => {
       const selectedTopic = e.detail.topic.toLowerCase();
       this.currentTopic = selectedTopic;
-      if (this.topicToImageMap[selectedTopic]) {
+      
+      // Only load image if initial loading period has passed
+      if (this.hasLoadedInitialImage && this.topicToImageMap[selectedTopic]) {
         this.loadHeroImage(selectedTopic, true);
       }
     });
@@ -261,8 +276,7 @@ class TopicSwiperManager {
       },
     });
 
-    // Set global reference
-    window.topicSwiper = this.swiper;
+
     
     // Delayed check in case Swiper overrides attributes after initialization
     setTimeout(() => this.correctSwiperARIARoles(), 1000);
@@ -554,8 +568,7 @@ class GallerySwiperManager {
       },
     });
 
-    // Set global reference
-    window.gallerySwiper = this.swiper;
+
 
     // Setup slide change listener
     this.swiper.on("slideChange", () => this.updateActiveTab());
@@ -1009,7 +1022,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 });
-  
+
+
 /******************************************************************************
  * DATE PICKER & FORM SETUP
  *****************************************************************************/
