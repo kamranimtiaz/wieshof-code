@@ -143,7 +143,7 @@ class HeroImageManager {
 
     // Use the instance's currentTopic if no topic is passed
     const topicToCheck = currentTopic || this.currentTopic;
-    
+
     if (topicToCheck && this.topicToImageMap[topicToCheck.toLowerCase()]) {
       this.loadHeroImage(topicToCheck.toLowerCase(), true);
     }
@@ -163,10 +163,10 @@ class HeroImageManager {
       this.currentTopic = paramTopic.toLowerCase();
       // Don't load hero image at start due to hasLoadedInitialImage flag
     }
-    
+
     // Always show the hero image element (with placeholder)
     this.showHeroImage();
-    
+
     // Set flag to true after initial launch to allow normal functionality
     setTimeout(() => {
       this.hasLoadedInitialImage = true;
@@ -177,7 +177,7 @@ class HeroImageManager {
     document.addEventListener("topicChange", (e) => {
       const selectedTopic = e.detail.topic.toLowerCase();
       this.currentTopic = selectedTopic;
-      
+
       // Only load image if initial loading period has passed
       if (this.hasLoadedInitialImage && this.topicToImageMap[selectedTopic]) {
         this.loadHeroImage(selectedTopic, true);
@@ -276,8 +276,6 @@ class TopicSwiperManager {
       },
     });
 
-
-    
     // Delayed check in case Swiper overrides attributes after initialization
     setTimeout(() => this.correctSwiperARIARoles(), 1000);
   }
@@ -336,7 +334,7 @@ class TopicSwiperManager {
 
     const topic = trigger.getAttribute("data-topic").toLowerCase();
     this.currentTopic = topic;
-    
+
     const evt = new CustomEvent("topicChange", {
       detail: { topic, manual: true },
     });
@@ -369,7 +367,10 @@ class TopicSwiperManager {
 
       const parentTabItem = trigger.closest(".swiper-slide");
       if (parentTabItem) {
-        parentTabItem.setAttribute("aria-selected", isActive ? "true" : "false");
+        parentTabItem.setAttribute(
+          "aria-selected",
+          isActive ? "true" : "false"
+        );
       }
 
       if (isActive) {
@@ -476,6 +477,7 @@ class GallerySwiperManager {
     this.swiper = null;
     this.triggerElements = [];
     this.tabItems = [];
+    this.currentActiveTab = null;
     this.init();
   }
 
@@ -568,8 +570,6 @@ class GallerySwiperManager {
       },
     });
 
-
-
     // Setup slide change listener
     this.swiper.on("slideChange", () => this.updateActiveTab());
   }
@@ -581,7 +581,7 @@ class GallerySwiperManager {
       });
     });
 
-    // Listen for topic changes
+    // Topic changes ALWAYS control gallery tabs
     document.addEventListener("topicChange", (e) => {
       this.handleTopicChange(e.detail.topic);
     });
@@ -589,6 +589,36 @@ class GallerySwiperManager {
 
   handleTabClick(trigger) {
     const targetCategory = trigger.getAttribute("data-gallery-id");
+
+    // Store current active tab
+    this.currentActiveTab = targetCategory;
+
+    this.navigateToTab(targetCategory);
+    this.updateTabVisualState(targetCategory);
+  }
+
+  handleTopicChange(selectedTopic) {
+    // Topic changes ALWAYS update gallery - no conditions
+    const targetIndex = this.findSlideIndexByTopic(selectedTopic);
+    if (targetIndex !== -1) {
+      this.swiper.slideTo(targetIndex);
+    }
+    this.updateTabSelection(selectedTopic);
+
+    // Update current active tab to match topic
+    this.currentActiveTab = selectedTopic.toLowerCase();
+  }
+  // Get current gallery tab
+  getCurrentActiveTab() {
+    const activeTab = document.querySelector(".gallery_tabs.is-custom-current");
+    if (activeTab) {
+      return activeTab.getAttribute("data-gallery-id");
+    }
+    return this.currentActiveTab;
+  }
+
+  // Separate navigation logic
+  navigateToTab(targetCategory) {
     const wrapper = document.querySelector(".swiper-wrapper.is-gallery");
     const allSlides = wrapper.querySelectorAll(".swiper-slide.is-gallery");
     let targetIndex = 0;
@@ -603,33 +633,58 @@ class GallerySwiperManager {
     });
 
     this.swiper.slideTo(targetIndex);
-
-    // Handle ARIA attributes
-    const parentTabItem =
-      trigger.closest('[role="tab"]') ||
-      trigger.closest(".gallery_tabs-collection-item");
-
-    if (parentTabItem) {
-      this.tabItems.forEach((item) => {
-        item.setAttribute("aria-selected", "false");
-      });
-
-      parentTabItem.setAttribute("aria-selected", "true");
-
-      this.triggerElements.forEach((t) =>
-        t.removeAttribute("aria-selected")
-      );
-    }
-
-    this.updateActiveTab();
   }
 
-  handleTopicChange(selectedTopic) {
-    const targetIndex = this.findSlideIndexByTopic(selectedTopic);
-    if (targetIndex !== -1) {
-      this.swiper.slideTo(targetIndex);
+  // Separate visual state update logic
+  updateTabVisualState(targetCategory) {
+    // Reset all tabs
+    this.triggerElements.forEach((trigger) => {
+      trigger.classList.remove("is-custom-current");
+    });
+
+    this.tabItems.forEach((item) => {
+      item.setAttribute("aria-selected", "false");
+    });
+
+    // Set active tab
+    const activeTrigger = document.querySelector(
+      `.gallery_tabs[data-gallery-id="${targetCategory}"]`
+    );
+    if (activeTrigger) {
+      activeTrigger.classList.add("is-custom-current");
+
+      const parentTabItem =
+        activeTrigger.closest('[role="tab"]') ||
+        activeTrigger.closest(".gallery_tabs-collection-item");
+
+      if (parentTabItem) {
+        parentTabItem.setAttribute("aria-selected", "true");
+      }
     }
-    this.updateTabSelection(selectedTopic);
+  }
+  updateSeason(newSeason) {
+    // Store current active tab BEFORE any changes
+    const activeTabBeforeDestroy = this.getCurrentActiveTab();
+    
+    this.season = newSeason;
+    this.destroy();
+    this.init();
+    
+    // Restore the gallery tab state after recreation
+    if (activeTabBeforeDestroy) {
+      // Temporarily remove slideChange listener to prevent interference
+      this.swiper.off('slideChange');
+      
+      // Restore state immediately
+      this.currentActiveTab = activeTabBeforeDestroy;
+      this.updateTabVisualState(activeTabBeforeDestroy);
+      this.navigateToTab(activeTabBeforeDestroy);
+      
+      // Re-enable slideChange listener after restoration
+      setTimeout(() => {
+        this.swiper.on("slideChange", () => this.updateActiveTab());
+      }, 50);
+    }
   }
 
   findSlideIndexByTopic(selectedTopic) {
@@ -680,42 +735,17 @@ class GallerySwiperManager {
     const activeSlide = this.swiper.slides[this.swiper.activeIndex];
     const activeCategory = activeSlide.getAttribute("data-gallery-id");
 
-    // Reset visual highlighting
-    this.triggerElements.forEach((trigger) =>
-      trigger.classList.remove("is-custom-current")
-    );
+    // Update current active tab
+    this.currentActiveTab = activeCategory;
 
-    // Highlight corresponding trigger element
-    const activeTrigger = document.querySelector(
-      `.gallery_tabs[data-gallery-id="${activeCategory}"]`
-    );
-    if (activeTrigger) {
-      activeTrigger.classList.add("is-custom-current");
-    }
-
-    // Set ARIA attributes correctly on actual tab elements
-    this.tabItems.forEach((tabItem) => {
-      const childTrigger = tabItem.querySelector(
-        `.gallery_tabs[data-gallery-id]`
-      );
-      if (childTrigger) {
-        const tabCategory = childTrigger.getAttribute("data-gallery-id");
-        const isActive = tabCategory === activeCategory;
-
-        tabItem.setAttribute("aria-selected", isActive ? "true" : "false");
-        childTrigger.removeAttribute("aria-selected");
-      }
-    });
-  }
-
-  updateSeason(newSeason) {
-    this.season = newSeason;
-    this.destroy();
-    this.init();
+    // Use the centralized visual state update
+    this.updateTabVisualState(activeCategory);
   }
 
   destroy() {
     if (this.swiper) {
+      // Remove slideChange event listener before destroying to prevent unwanted events
+      this.swiper.off("slideChange");
       this.swiper.destroy(true, true);
       this.swiper = null;
     }
@@ -938,10 +968,13 @@ class GallerySystem {
       this.data,
       this.currentSeason
     );
-    
+
     // Initialize Swiper managers
     this.topicSwiperManager = new TopicSwiperManager(this.data);
-    this.gallerySwiperManager = new GallerySwiperManager(this.data, this.currentSeason);
+    this.gallerySwiperManager = new GallerySwiperManager(
+      this.data,
+      this.currentSeason
+    );
   }
 
   setupEventListeners() {
@@ -959,19 +992,12 @@ class GallerySystem {
     this.galleryImageRenderer.updateSeason(newSeason);
     this.quoteImageManager.updateSeason(newSeason, this.currentTopic);
 
-    // Update swiper managers
+    // Update gallery swiper manager - this handles the smooth transition internally
     if (this.gallerySwiperManager) {
       this.gallerySwiperManager.updateSeason(newSeason);
     }
 
-    if (currentTopic) {
-      setTimeout(() => {
-        const evt = new CustomEvent("topicChange", {
-          detail: { topic: currentTopic, manual: false },
-        });
-        document.dispatchEvent(evt);
-      }, 100);
-    }
+    // No topicChange events during season switch
   }
 }
 
@@ -1023,12 +1049,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-
 /******************************************************************************
  * DATE PICKER & FORM SETUP
  *****************************************************************************/
-document.addEventListener('DOMContentLoaded', function() {
-  
+document.addEventListener("DOMContentLoaded", function () {
   let heroSelectedDates = [];
   let heroAdultsCount = 2;
   let heroChildrenCount = 0;
@@ -1038,63 +1062,71 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function formatFancyRange(selectedDates, instance) {
     if (!selectedDates || selectedDates.length < 1) return "";
-    return selectedDates.map(function(d) {
-      return instance.formatDate(d, instance.config.dateFormat);
-    }).join(" bis ");
+    return selectedDates
+      .map(function (d) {
+        return instance.formatDate(d, instance.config.dateFormat);
+      })
+      .join(" bis ");
   }
 
   function formatTechnicalRange(selectedDates) {
     if (!selectedDates || selectedDates.length < 1) return "";
-    return selectedDates.map(function(d) {
-      let yyyy = d.getFullYear();
-      let mm = ("0" + (d.getMonth() + 1)).slice(-2);
-      let dd = ("0" + d.getDate()).slice(-2);
-      return yyyy + "-" + mm + "-" + dd;
-    }).join(" - ");
+    return selectedDates
+      .map(function (d) {
+        let yyyy = d.getFullYear();
+        let mm = ("0" + (d.getMonth() + 1)).slice(-2);
+        let dd = ("0" + d.getDate()).slice(-2);
+        return yyyy + "-" + mm + "-" + dd;
+      })
+      .join(" - ");
   }
 
   function updateNightsDisplay(selectedDates) {
-    const nightsEl = document.querySelector('[data-summary-nights]');
-    const container = nightsEl ? nightsEl.closest('.form_picker-nights-wrapper') : null;
-    
+    const nightsEl = document.querySelector("[data-summary-nights]");
+    const container = nightsEl
+      ? nightsEl.closest(".form_picker-nights-wrapper")
+      : null;
+
     if (!nightsEl || !container) return;
-    
+
     if (!selectedDates || selectedDates.length < 2) {
-      container.style.visibility = 'hidden';
+      container.style.visibility = "hidden";
       return;
     }
-    
+
     const diff = Math.round((selectedDates[1] - selectedDates[0]) / 86400000);
     const nights = diff < 1 ? 1 : diff;
-    container.style.visibility = 'visible';
-    
-    const label = (nights === 1) ? "1 Übernachtung" : (nights + " Übernachtungen");
+    container.style.visibility = "visible";
+
+    const label = nights === 1 ? "1 Übernachtung" : nights + " Übernachtungen";
     nightsEl.textContent = label;
   }
 
   if (window.innerWidth >= 992) {
-    setTimeout(function() {
-      const compEl = document.querySelector('.picker_component');
-      if (compEl) compEl.classList.add('show');
+    setTimeout(function () {
+      const compEl = document.querySelector(".picker_component");
+      if (compEl) compEl.classList.add("show");
 
-      flatpickr('.picker_date', {
+      flatpickr(".picker_date", {
         mode: "range",
         dateFormat: "D., d. M.",
         minDate: "today",
         locale: "de",
         static: true,
         position: "above",
-        onReady: function(selectedDates, dateStr, instance) {
+        onReady: function (selectedDates, dateStr, instance) {
           const cal = instance.calendarContainer;
           if (cal) {
-            cal.classList.add('picker_initial-position');
+            cal.classList.add("picker_initial-position");
             const extra = cal.querySelectorAll("input[name^='field']");
-            extra.forEach(f => f.removeAttribute('name'));
+            extra.forEach((f) => f.removeAttribute("name"));
           }
         },
-        onChange: function(sel, ds, inst) {
+        onChange: function (sel, ds, inst) {
           heroSelectedDates = sel;
-          const heroTextEl = document.querySelector('[data-picker="date-text"]');
+          const heroTextEl = document.querySelector(
+            '[data-picker="date-text"]'
+          );
           if (heroTextEl) {
             if (heroTextEl.value !== undefined) {
               heroTextEl.value = ds || "Datum auswählen";
@@ -1102,24 +1134,36 @@ document.addEventListener('DOMContentLoaded', function() {
               heroTextEl.textContent = ds || "Datum auswählen";
             }
           }
-        }
+        },
       });
 
       (function () {
-        const pickerTrigger = document.querySelector('[data-open-popup-persons=""]');
+        const pickerTrigger = document.querySelector(
+          '[data-open-popup-persons=""]'
+        );
         const pickerPopup = document.querySelector('[data-popup-persons=""]');
-        const pickerText = document.querySelector('[data-picker="persons-text"]');
-        const adultsCounterText = document.querySelector('[data-counter="adults-text"]');
-        const childrenCounterText = document.querySelector('[data-counter="childs-text"]');
-        const closeButton = pickerPopup ? pickerPopup.querySelector('[data-custom="submit-person"]') : null;
-        const controls = pickerPopup ? pickerPopup.querySelectorAll('[data-controls]') : null;
+        const pickerText = document.querySelector(
+          '[data-picker="persons-text"]'
+        );
+        const adultsCounterText = document.querySelector(
+          '[data-counter="adults-text"]'
+        );
+        const childrenCounterText = document.querySelector(
+          '[data-counter="childs-text"]'
+        );
+        const closeButton = pickerPopup
+          ? pickerPopup.querySelector('[data-custom="submit-person"]')
+          : null;
+        const controls = pickerPopup
+          ? pickerPopup.querySelectorAll("[data-controls]")
+          : null;
         if (!pickerTrigger || !pickerPopup || !closeButton || !controls) return;
 
-        pickerTrigger.addEventListener("click", function() {
+        pickerTrigger.addEventListener("click", function () {
           if (pickerPopup.getAttribute("aria-hidden") === "true") {
             pickerPopup.style.display = "block";
             pickerPopup.style.opacity = 0;
-            
+
             requestAnimationFrame(() => {
               pickerPopup.style.opacity = 1;
               pickerPopup.setAttribute("aria-hidden", "false");
@@ -1134,10 +1178,10 @@ document.addEventListener('DOMContentLoaded', function() {
           if (focusedElement && pickerPopup.contains(focusedElement)) {
             focusedElement.blur();
           }
-          
+
           pickerTrigger.setAttribute("aria-expanded", "false");
           pickerPopup.style.opacity = 0;
-          
+
           // Warten auf das Ende der Animation
           setTimeout(() => {
             pickerPopup.style.display = "none";
@@ -1145,11 +1189,20 @@ document.addEventListener('DOMContentLoaded', function() {
           }, 300);
         }
 
-        closeButton.addEventListener("click", function() {
+        closeButton.addEventListener("click", function () {
           if (pickerText) {
-            const txt = (heroAdultsCount === 1
-              ? heroAdultsCount + " Erwachsener, " + (heroChildrenCount === 1 ? heroChildrenCount + " Kind" : heroChildrenCount + " Kinder")
-              : heroAdultsCount + " Erwachsene, " + (heroChildrenCount === 1 ? heroChildrenCount + " Kind" : heroChildrenCount + " Kinder"));
+            const txt =
+              heroAdultsCount === 1
+                ? heroAdultsCount +
+                  " Erwachsener, " +
+                  (heroChildrenCount === 1
+                    ? heroChildrenCount + " Kind"
+                    : heroChildrenCount + " Kinder")
+                : heroAdultsCount +
+                  " Erwachsene, " +
+                  (heroChildrenCount === 1
+                    ? heroChildrenCount + " Kind"
+                    : heroChildrenCount + " Kinder");
             if (pickerText.value !== undefined) {
               pickerText.value = txt;
             } else {
@@ -1159,14 +1212,14 @@ document.addEventListener('DOMContentLoaded', function() {
           closePopup();
         });
 
-        document.addEventListener("click", function(e) {
+        document.addEventListener("click", function (e) {
           if (!pickerPopup.contains(e.target) && e.target !== pickerTrigger) {
             closePopup();
           }
         });
 
-        controls.forEach(function(ctrl) {
-          ctrl.addEventListener("click", function() {
+        controls.forEach(function (ctrl) {
+          ctrl.addEventListener("click", function () {
             const t = ctrl.getAttribute("data-controls");
             const wrap = ctrl.closest(".picker_persons-wrapper");
             const cEl = wrap.querySelector("[data-counter]");
@@ -1175,8 +1228,12 @@ document.addEventListener('DOMContentLoaded', function() {
               if (t === "plus") heroAdultsCount++;
               else if (t === "minus" && heroAdultsCount > 1) heroAdultsCount--;
               if (adultsCounterText) {
-                const valA = (heroAdultsCount === 1) ? heroAdultsCount + " Erwachsener" : heroAdultsCount + " Erwachsene";
-                if (adultsCounterText.value !== undefined) adultsCounterText.value = valA;
+                const valA =
+                  heroAdultsCount === 1
+                    ? heroAdultsCount + " Erwachsener"
+                    : heroAdultsCount + " Erwachsene";
+                if (adultsCounterText.value !== undefined)
+                  adultsCounterText.value = valA;
                 else adultsCounterText.textContent = valA;
               }
               const minusB = wrap.querySelector('[data-controls="minus"]');
@@ -1186,15 +1243,21 @@ document.addEventListener('DOMContentLoaded', function() {
               }
             } else if (cType === "childs-text") {
               if (t === "plus") heroChildrenCount++;
-              else if (t === "minus" && heroChildrenCount > 0) heroChildrenCount--;
+              else if (t === "minus" && heroChildrenCount > 0)
+                heroChildrenCount--;
               if (childrenCounterText) {
-                const valC = (heroChildrenCount === 1) ? heroChildrenCount + " Kind" : heroChildrenCount + " Kinder";
-                if (childrenCounterText.value !== undefined) childrenCounterText.value = valC;
+                const valC =
+                  heroChildrenCount === 1
+                    ? heroChildrenCount + " Kind"
+                    : heroChildrenCount + " Kinder";
+                if (childrenCounterText.value !== undefined)
+                  childrenCounterText.value = valC;
                 else childrenCounterText.textContent = valC;
               }
               const minusB = wrap.querySelector('[data-controls="minus"]');
               if (minusB) {
-                if (heroChildrenCount === 0) minusB.classList.add("is-disabled");
+                if (heroChildrenCount === 0)
+                  minusB.classList.add("is-disabled");
                 else minusB.classList.remove("is-disabled");
               }
             }
@@ -1202,51 +1265,78 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       })();
 
-      const heroRequestBtn = document.querySelector('[data-custom="transfer-hero-data"]');
+      const heroRequestBtn = document.querySelector(
+        '[data-custom="transfer-hero-data"]'
+      );
       if (heroRequestBtn) {
-        heroRequestBtn.addEventListener('click', function() {
+        heroRequestBtn.addEventListener("click", function () {
           if (heroSelectedDates && heroSelectedDates.length > 0) {
             window.__heroData = {
               dates: heroSelectedDates,
               adults: heroAdultsCount,
-              children: heroChildrenCount
+              children: heroChildrenCount,
             };
             if (formDateInstance) {
               formDateInstance.setDate(window.__heroData.dates, false);
-              const fancy = formatFancyRange(window.__heroData.dates, formDateInstance);
+              const fancy = formatFancyRange(
+                window.__heroData.dates,
+                formDateInstance
+              );
               const tech = formatTechnicalRange(window.__heroData.dates);
-              const formDateVisible = document.querySelector('.form_picker-date[data-picker="date-text-form"]');
-              const formDateHidden = document.querySelector('[data-picker="date-hidden-form"]');
+              const formDateVisible = document.querySelector(
+                '.form_picker-date[data-picker="date-text-form"]'
+              );
+              const formDateHidden = document.querySelector(
+                '[data-picker="date-hidden-form"]'
+              );
               formDateVisible.value = fancy || "";
               if (formDateHidden) formDateHidden.value = tech;
             }
             formAdultsCount = heroAdultsCount;
             formChildrenCount = heroChildrenCount;
-            const pCont = document.querySelector('.form_picker-persons');
+            const pCont = document.querySelector(".form_picker-persons");
             if (pCont) {
-              const w = pCont.querySelectorAll('.form_picker-persons-wrapper');
+              const w = pCont.querySelectorAll(".form_picker-persons-wrapper");
               if (w.length >= 2) {
                 const aWrap = w[0];
                 const cWrap = w[1];
-                const formAdultsText = aWrap.querySelector('[data-counter="adults-text-form"]');
-                const formChildsText = cWrap.querySelector('[data-counter="childs-text-form"]');
+                const formAdultsText = aWrap.querySelector(
+                  '[data-counter="adults-text-form"]'
+                );
+                const formChildsText = cWrap.querySelector(
+                  '[data-counter="childs-text-form"]'
+                );
                 if (formAdultsText) {
-                  const valA = (formAdultsCount === 1) ? formAdultsCount + " Erwachsener" : formAdultsCount + " Erwachsene";
-                  if (formAdultsText.value !== undefined) formAdultsText.value = valA;
+                  const valA =
+                    formAdultsCount === 1
+                      ? formAdultsCount + " Erwachsener"
+                      : formAdultsCount + " Erwachsene";
+                  if (formAdultsText.value !== undefined)
+                    formAdultsText.value = valA;
                   else formAdultsText.textContent = valA;
-                  const minusBA = aWrap.querySelector('[data-controls="minus"]');
+                  const minusBA = aWrap.querySelector(
+                    '[data-controls="minus"]'
+                  );
                   if (minusBA) {
-                    if (formAdultsCount === 1) minusBA.classList.add("is-disabled");
+                    if (formAdultsCount === 1)
+                      minusBA.classList.add("is-disabled");
                     else minusBA.classList.remove("is-disabled");
                   }
                 }
                 if (formChildsText) {
-                  const valC = (formChildrenCount === 1) ? formChildrenCount + " Kind" : formChildrenCount + " Kinder";
-                  if (formChildsText.value !== undefined) formChildsText.value = valC;
+                  const valC =
+                    formChildrenCount === 1
+                      ? formChildrenCount + " Kind"
+                      : formChildrenCount + " Kinder";
+                  if (formChildsText.value !== undefined)
+                    formChildsText.value = valC;
                   else formChildsText.textContent = valC;
-                  const minusBC = cWrap.querySelector('[data-controls="minus"]');
+                  const minusBC = cWrap.querySelector(
+                    '[data-controls="minus"]'
+                  );
                   if (minusBC) {
-                    if (formChildrenCount === 0) minusBC.classList.add("is-disabled");
+                    if (formChildrenCount === 0)
+                      minusBC.classList.add("is-disabled");
                     else minusBC.classList.remove("is-disabled");
                   }
                 }
@@ -1259,8 +1349,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 600);
   }
 
-  const formDateEl = document.querySelector('.form_picker-date[data-picker="date-text-form"]');
-  const formDateHiddenEl = document.querySelector('[data-picker="date-hidden-form"]');
+  const formDateEl = document.querySelector(
+    '.form_picker-date[data-picker="date-text-form"]'
+  );
+  const formDateHiddenEl = document.querySelector(
+    '[data-picker="date-hidden-form"]'
+  );
   if (formDateEl) {
     const flatpickrConfig = {
       mode: "range",
@@ -1269,15 +1363,15 @@ document.addEventListener('DOMContentLoaded', function() {
       locale: "de",
       static: true,
       position: "below",
-      onReady: function(sel, ds, inst) {
+      onReady: function (sel, ds, inst) {
         const cal = inst.calendarContainer;
         if (cal) {
-          cal.classList.add('form_picker_initial-position');
+          cal.classList.add("form_picker_initial-position");
           const extraFields = cal.querySelectorAll("input[name^='field']");
-          extraFields.forEach(f => f.removeAttribute('name'));
+          extraFields.forEach((f) => f.removeAttribute("name"));
         }
       },
-      onChange: function(sel, ds, inst) {
+      onChange: function (sel, ds, inst) {
         if (!sel || sel.length === 0) {
           formDateEl.value = "";
         } else {
@@ -1287,92 +1381,111 @@ document.addEventListener('DOMContentLoaded', function() {
           formDateHiddenEl.value = formatTechnicalRange(sel);
         }
         updateNightsDisplay(sel);
-      }
+      },
     };
 
     formDateInstance = flatpickr(formDateEl, {
       ...flatpickrConfig,
-      showMonths: window.innerWidth >= 992 ? 2 : 1
+      showMonths: window.innerWidth >= 992 ? 2 : 1,
     });
-    
-    window.addEventListener('resize', debounce(function() {
-      if (!formDateInstance) return;
-      
-      const newShowMonths = window.innerWidth >= 992 ? 2 : 1;
-      if (formDateInstance.config.showMonths === newShowMonths) return;
-      
-      const currentDates = formDateInstance.selectedDates;
-      formDateInstance.destroy();
-      
-      formDateInstance = flatpickr(formDateEl, {
-        ...flatpickrConfig,
-        showMonths: newShowMonths
-      });
-      
-      if (currentDates?.length > 0) {
-        formDateInstance.setDate(currentDates);
-      }
-    }, 250));
+
+    window.addEventListener(
+      "resize",
+      debounce(function () {
+        if (!formDateInstance) return;
+
+        const newShowMonths = window.innerWidth >= 992 ? 2 : 1;
+        if (formDateInstance.config.showMonths === newShowMonths) return;
+
+        const currentDates = formDateInstance.selectedDates;
+        formDateInstance.destroy();
+
+        formDateInstance = flatpickr(formDateEl, {
+          ...flatpickrConfig,
+          showMonths: newShowMonths,
+        });
+
+        if (currentDates?.length > 0) {
+          formDateInstance.setDate(currentDates);
+        }
+      }, 250)
+    );
   }
 
   function debounce(func, wait) {
     let timeout;
-    return function() {
-      const context = this, args = arguments;
+    return function () {
+      const context = this,
+        args = arguments;
       clearTimeout(timeout);
-      timeout = setTimeout(function() {
+      timeout = setTimeout(function () {
         func.apply(context, args);
       }, wait);
     };
   }
 
   (function initFormPersons() {
-    const pCont = document.querySelector('.form_picker-persons');
+    const pCont = document.querySelector(".form_picker-persons");
     if (!pCont) return;
-    const w = pCont.querySelectorAll('.form_picker-persons-wrapper');
+    const w = pCont.querySelectorAll(".form_picker-persons-wrapper");
     if (w.length < 2) return;
     const aWrap = w[0];
     const cWrap = w[1];
-    const formAdultsText = aWrap.querySelector('[data-counter="adults-text-form"]');
-    const formChildsText = cWrap.querySelector('[data-counter="childs-text-form"]');
+    const formAdultsText = aWrap.querySelector(
+      '[data-counter="adults-text-form"]'
+    );
+    const formChildsText = cWrap.querySelector(
+      '[data-counter="childs-text-form"]'
+    );
     if (formAdultsText) {
-      if (formAdultsText.value !== undefined) formAdultsText.value = "2 Erwachsene";
+      if (formAdultsText.value !== undefined)
+        formAdultsText.value = "2 Erwachsene";
       else formAdultsText.textContent = "2 Erwachsene";
     }
     if (formChildsText) {
       if (formChildsText.value !== undefined) formChildsText.value = "0 Kinder";
       else formChildsText.textContent = "0 Kinder";
     }
-    const aCtrls = aWrap.querySelectorAll('[data-controls]');
-    aCtrls.forEach(function(ctrl) {
-      ctrl.addEventListener('click', function() {
+    const aCtrls = aWrap.querySelectorAll("[data-controls]");
+    aCtrls.forEach(function (ctrl) {
+      ctrl.addEventListener("click", function () {
         const t = ctrl.getAttribute("data-controls");
         if (t === "plus") formAdultsCount++;
         else if (t === "minus" && formAdultsCount > 1) formAdultsCount--;
-        const valA = (formAdultsCount === 1) ? formAdultsCount + " Erwachsener" : formAdultsCount + " Erwachsene";
+        const valA =
+          formAdultsCount === 1
+            ? formAdultsCount + " Erwachsener"
+            : formAdultsCount + " Erwachsene";
         if (formAdultsText) {
           if (formAdultsText.value !== undefined) formAdultsText.value = valA;
           else formAdultsText.textContent = valA;
         }
-        const minusB = ctrl.closest('.form_picker-persons-wrapper').querySelector('[data-controls="minus"]');
+        const minusB = ctrl
+          .closest(".form_picker-persons-wrapper")
+          .querySelector('[data-controls="minus"]');
         if (minusB) {
           if (formAdultsCount === 1) minusB.classList.add("is-disabled");
           else minusB.classList.remove("is-disabled");
         }
       });
     });
-    const cCtrls = cWrap.querySelectorAll('[data-controls]');
-    cCtrls.forEach(function(ctrl) {
-      ctrl.addEventListener('click', function() {
+    const cCtrls = cWrap.querySelectorAll("[data-controls]");
+    cCtrls.forEach(function (ctrl) {
+      ctrl.addEventListener("click", function () {
         const t = ctrl.getAttribute("data-controls");
         if (t === "plus") formChildrenCount++;
         else if (t === "minus" && formChildrenCount > 0) formChildrenCount--;
-        const valC = (formChildrenCount === 1) ? formChildrenCount + " Kind" : formChildrenCount + " Kinder";
+        const valC =
+          formChildrenCount === 1
+            ? formChildrenCount + " Kind"
+            : formChildrenCount + " Kinder";
         if (formChildsText) {
           if (formChildsText.value !== undefined) formChildsText.value = valC;
           else formChildsText.textContent = valC;
         }
-        const minusB = ctrl.closest('.form_picker-persons-wrapper').querySelector('[data-controls="minus"]');
+        const minusB = ctrl
+          .closest(".form_picker-persons-wrapper")
+          .querySelector('[data-controls="minus"]');
         if (minusB) {
           if (formChildrenCount === 0) minusB.classList.add("is-disabled");
           else minusB.classList.remove("is-disabled");
@@ -1382,7 +1495,7 @@ document.addEventListener('DOMContentLoaded', function() {
   })();
 
   (function customValidationSetup() {
-    const myForm = document.querySelector('form');
+    const myForm = document.querySelector("form");
     if (!myForm) return;
     function showElement(el, displayType = "block") {
       el.style.display = displayType;
@@ -1396,7 +1509,9 @@ document.addEventListener('DOMContentLoaded', function() {
       let isFormValid = true;
       let firstErrorElement = null;
       document.querySelectorAll("[data-required]").forEach((requiredGroup) => {
-        const inputs = requiredGroup.querySelectorAll("input, select, textarea");
+        const inputs = requiredGroup.querySelectorAll(
+          "input, select, textarea"
+        );
         let isGroupValid = true;
         inputs.forEach((input) => {
           if (input.type === "checkbox" || input.type === "radio") {
@@ -1406,13 +1521,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
           }
         });
-        const checkable = Array.from(inputs).filter(input => input.type === "checkbox" || input.type === "radio");
+        const checkable = Array.from(inputs).filter(
+          (input) => input.type === "checkbox" || input.type === "radio"
+        );
         if (checkable.length > 0) {
-          if (!checkable.some(input => input.checked)) {
+          if (!checkable.some((input) => input.checked)) {
             isGroupValid = false;
           }
         }
-        const errorElement = requiredGroup.querySelector('.form_error');
+        const errorElement = requiredGroup.querySelector(".form_error");
         if (!isGroupValid) {
           isFormValid = false;
           if (showErrors && errorElement) {
@@ -1431,16 +1548,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     myForm.action = "https://form.taxi/s/hao3m8ab";
     const thankYouURL = window.location.origin + "/danke";
-    myForm.addEventListener("submit", function(e) {
+    myForm.addEventListener("submit", function (e) {
       e.preventDefault();
       const { isFormValid, firstErrorElement } = validateRequiredFields(true);
       if (!isFormValid) {
         if (firstErrorElement) {
-          firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+          firstErrorElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         }
         return;
       }
-      const submitButton = myForm.querySelector('button[type="submit"], #submit-button');
+      const submitButton = myForm.querySelector(
+        'button[type="submit"], #submit-button'
+      );
       let originalText = "";
       if (submitButton) {
         originalText = submitButton.textContent;
@@ -1450,26 +1572,26 @@ document.addEventListener('DOMContentLoaded', function() {
       fetch(myForm.action, {
         method: myForm.method || "POST",
         body: new FormData(myForm),
-        headers: { "Accept": "application/json" }
+        headers: { Accept: "application/json" },
       })
-      .then(response => {
-        if (response.ok) {
-          window.location.href = thankYouURL;
-        } else {
-          throw new Error("Fehler beim Absenden des Formulars.");
-        }
-      })
-      .catch(error => {
-        console.error(error);
-        const errorMessage = myForm.querySelector(".form_error-message");
-        if (errorMessage) {
-          showElement(errorMessage, "block");
-        }
-        if (submitButton) {
-          submitButton.disabled = false;
-          submitButton.textContent = originalText;
-        }
-      });
+        .then((response) => {
+          if (response.ok) {
+            window.location.href = thankYouURL;
+          } else {
+            throw new Error("Fehler beim Absenden des Formulars.");
+          }
+        })
+        .catch((error) => {
+          console.error(error);
+          const errorMessage = myForm.querySelector(".form_error-message");
+          if (errorMessage) {
+            showElement(errorMessage, "block");
+          }
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
+          }
+        });
     });
     document.querySelectorAll("[data-required]").forEach((requiredGroup) => {
       const inputs = requiredGroup.querySelectorAll("input, select, textarea");
@@ -1477,8 +1599,12 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener("change", () => {
           let isValidNow = true;
           if (input.type === "checkbox" || input.type === "radio") {
-            const checkable = Array.from(requiredGroup.querySelectorAll("input[type='checkbox'], input[type='radio']"));
-            if (!checkable.some(inp => inp.checked)) {
+            const checkable = Array.from(
+              requiredGroup.querySelectorAll(
+                "input[type='checkbox'], input[type='radio']"
+              )
+            );
+            if (!checkable.some((inp) => inp.checked)) {
               isValidNow = false;
             }
           } else {
@@ -1487,14 +1613,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
           }
           if (isValidNow) {
-            const errorElement = requiredGroup.querySelector('.form_error');
+            const errorElement = requiredGroup.querySelector(".form_error");
             if (errorElement) hideElement(errorElement);
           }
         });
       });
     });
   })();
-
 });
 
 /******************************************************************************
@@ -1505,7 +1630,7 @@ document.addEventListener('DOMContentLoaded', function() {
    * Optimierte Throttle-Funktion für Scroll-Events
    * - Garantiert erste und letzte Ausführung
    * - Nutzt requestAnimationFrame für Browser-Optimierung
-   * 
+   *
    * @param {Function} fn Auszuführende Funktion
    * @param {Number} limit Zeit zwischen Aufrufen in ms
    * @return {Function} Throttled Funktion
@@ -1514,11 +1639,11 @@ document.addEventListener('DOMContentLoaded', function() {
     let lastFunc;
     let lastRan;
     let ticking = false;
-    
-    return function() {
+
+    return function () {
       const context = this;
       const args = arguments;
-      
+
       // rAF für Browser-Optimierung
       if (!ticking) {
         ticking = true;
@@ -1528,18 +1653,18 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         return;
       }
-      
+
       // Erste Ausführung sofort
       if (!lastRan) {
         fn.apply(context, args);
         lastRan = Date.now();
         return;
       }
-      
+
       clearTimeout(lastFunc);
-      
+
       const delta = Date.now() - lastRan;
-      
+
       // Verzögerte oder sofortige Ausführung
       if (delta < limit) {
         lastFunc = setTimeout(() => {
@@ -1559,7 +1684,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Nach einem kurzen Delay einblenden (nach dem Hero-Heading)
     setTimeout(() => {
       // Transition hinzufügen, bevor Werte geändert werden
-      navbarComponent.style.transition = "opacity 300ms ease-out, visibility 300ms ease-out";
+      navbarComponent.style.transition =
+        "opacity 300ms ease-out, visibility 300ms ease-out";
       navbarComponent.style.visibility = "visible";
       navbarComponent.style.opacity = "1";
     }, 200); // Etwas verzögert nach der Hero-Animation
@@ -1569,56 +1695,58 @@ document.addEventListener('DOMContentLoaded', function() {
   const navBg = document.querySelector(".navbar_bg-layer");
   const navMenu = document.querySelector(".navbar_menu");
   const hero = document.querySelector("#hero");
-  
+
   // Logo-Elemente für Farbänderung
   const logoLink = document.querySelector(".navbar_logo-link");
   const logoElement = document.querySelector(".navbar_logo");
   const logoSvg = document.querySelector(".navbar_logo-svg");
-  
+
   if (!navBg || !navMenu || !hero) return;
 
   // Farbvariable aus dem data-Attribut des Logo-Links auslesen
-  const heroLogoColorAttr = logoLink ? logoLink.getAttribute("data-logo-color-at-hero") : null;
+  const heroLogoColorAttr = logoLink
+    ? logoLink.getAttribute("data-logo-color-at-hero")
+    : null;
   let navVisible = false;
   let logoIsCustomColor = false;
 
   // Hilfsfunktionen für die Logo-Farbe
   function setLogoHeroColor() {
     if (!heroLogoColorAttr || logoIsCustomColor) return;
-    
+
     // Wir ändern nur die Farbe der sichtbaren Elemente, nicht des Link-Wrappers
     // Die vollständige CSS-Variable aus dem Attribut verwenden
     if (logoElement) {
       logoElement.style.transition = "color 300ms ease-out"; // Gleiche Transitions wie die Navbar
       logoElement.style.color = heroLogoColorAttr; // Direkt den Wert verwenden
     }
-    
+
     if (logoSvg) {
       logoSvg.style.transition = "color 300ms ease-out";
       logoSvg.style.color = heroLogoColorAttr; // Direkt den Wert verwenden
     }
-    
+
     logoIsCustomColor = true;
   }
 
   function resetLogoColor() {
     if (!logoIsCustomColor) return;
-    
+
     if (logoElement) logoElement.style.color = "";
     if (logoSvg) logoSvg.style.color = "";
-    
+
     logoIsCustomColor = false;
   }
 
   function showNav() {
-    navBg.classList.add('is-active');
-    navMenu.classList.add('is-active');
+    navBg.classList.add("is-active");
+    navMenu.classList.add("is-active");
     resetLogoColor(); // Logo auf Standardfarbe zurücksetzen wenn Nav eingeblendet wird
   }
 
   function hideNav() {
-    navBg.classList.remove('is-active');
-    navMenu.classList.remove('is-active');
+    navBg.classList.remove("is-active");
+    navMenu.classList.remove("is-active");
     setLogoHeroColor(); // Spezielle Hero-Farbe wenn Nav ausgeblendet ist
   }
 
@@ -1638,51 +1766,63 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Optimierte Scroll-Event-Registrierung mit Throttling (66ms ≈ 15fps)
   // Dies reduziert die CPU-Last erheblich, ohne wahrnehmbare Verzögerung zu verursachen
-  const throttledCheckNavVisibility = createThrottledFunction(checkNavVisibility, 66);
-  window.addEventListener("scroll", throttledCheckNavVisibility, { passive: true });
-  
+  const throttledCheckNavVisibility = createThrottledFunction(
+    checkNavVisibility,
+    66
+  );
+  window.addEventListener("scroll", throttledCheckNavVisibility, {
+    passive: true,
+  });
+
   // Initialisierung
   checkNavVisibility(); // Hier unthrottled für sofortige initiale Prüfung
-  
+
   // Initiale Farbeinstellung für das Logo im Hero-Bereich
   if (!navVisible && heroLogoColorAttr) {
     setLogoHeroColor();
   }
 })();
 
-
 /******************************************************************************
-* POPUP-SKRIPT MIT ATTRIBUTEN
-*****************************************************************************/
+ * POPUP-SKRIPT MIT ATTRIBUTEN
+ *****************************************************************************/
 document.addEventListener("DOMContentLoaded", function () {
-
   function openPopup(targetPopup) {
     if (!targetPopup) return;
-    
+
     const previouslyFocused = document.activeElement;
-    targetPopup.setAttribute('data-previous-focus', previouslyFocused ? previouslyFocused.id || 'document.body' : 'document.body');
-    
+    targetPopup.setAttribute(
+      "data-previous-focus",
+      previouslyFocused
+        ? previouslyFocused.id || "document.body"
+        : "document.body"
+    );
+
     targetPopup.setAttribute("aria-hidden", "false");
     targetPopup.setAttribute("aria-modal", "true");
-    
+
     targetPopup.removeAttribute("inert");
-    
+
     document.body.classList.add("scroll-disable");
-    
+
     targetPopup.classList.remove("hide");
-    
+
     targetPopup.style.opacity = "0";
     targetPopup.style.transition = "opacity 300ms ease-in-out";
-    
+
     requestAnimationFrame(() => {
       targetPopup.style.opacity = "1";
-      
+
       setTimeout(() => {
-        const closeButton = targetPopup.querySelector('[data-close-popup="true"] button');
+        const closeButton = targetPopup.querySelector(
+          '[data-close-popup="true"] button'
+        );
         if (closeButton) {
           closeButton.focus();
         } else {
-          const focusableElements = targetPopup.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          const focusableElements = targetPopup.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
           if (focusableElements.length > 0) {
             focusableElements[0].focus();
           }
@@ -1693,37 +1833,43 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function closePopup(targetPopup) {
     if (!targetPopup) return;
-    
+
     const focusedElement = document.activeElement;
     if (focusedElement && targetPopup.contains(focusedElement)) {
       focusedElement.blur();
     }
-    
+
     targetPopup.setAttribute("aria-hidden", "true");
     targetPopup.removeAttribute("aria-modal");
-    
+
     targetPopup.setAttribute("inert", "");
-    
+
     document.body.classList.remove("scroll-disable");
-    
+
     targetPopup.style.opacity = "0";
-    targetPopup.addEventListener("transitionend", () => {
-      targetPopup.classList.add("hide");
-      
-      setTimeout(() => {
-        const previousFocusId = targetPopup.getAttribute('data-previous-focus');
-        if (previousFocusId) {
-          if (previousFocusId === 'document.body') {
-            document.body.focus();
-          } else {
-            const previousElement = document.getElementById(previousFocusId);
-            if (previousElement) {
-              previousElement.focus();
+    targetPopup.addEventListener(
+      "transitionend",
+      () => {
+        targetPopup.classList.add("hide");
+
+        setTimeout(() => {
+          const previousFocusId = targetPopup.getAttribute(
+            "data-previous-focus"
+          );
+          if (previousFocusId) {
+            if (previousFocusId === "document.body") {
+              document.body.focus();
+            } else {
+              const previousElement = document.getElementById(previousFocusId);
+              if (previousElement) {
+                previousElement.focus();
+              }
             }
           }
-        }
-      }, 10);
-    }, { once: true });
+        }, 10);
+      },
+      { once: true }
+    );
   }
 
   function bindPopupTriggers() {
@@ -1737,12 +1883,17 @@ document.addEventListener("DOMContentLoaded", function () {
     freshTriggers.forEach((trigger) => {
       trigger.addEventListener("click", function (event) {
         // Ignoriere diesen Klick, wenn es über ein Delete-Element kommt
-        if (event.target.closest('[data-room-delete]') || event.target.closest('[data-offer-delete]')) {
+        if (
+          event.target.closest("[data-room-delete]") ||
+          event.target.closest("[data-offer-delete]")
+        ) {
           return;
         }
-        
+
         const popupName = this.getAttribute("data-open-popup");
-        const targetPopup = document.querySelector(`[data-popup="${popupName}"]`);
+        const targetPopup = document.querySelector(
+          `[data-popup="${popupName}"]`
+        );
         if (targetPopup) {
           event.preventDefault();
           openPopup(targetPopup);
@@ -1771,23 +1922,27 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
-  document.addEventListener('click', function(e) {
-    const linkElement = e.target.closest('a[href^="#"]');
-    if (linkElement && linkElement.closest('[data-close-popup="true"]')) {
-      const targetPopup = linkElement.closest("[data-popup]");
-      if (targetPopup) {
-        closePopup(targetPopup);
-        const href = linkElement.getAttribute('href');
-        setTimeout(() => {
-          const targetElement = document.querySelector(href);
-          if (targetElement) {
-            targetElement.scrollIntoView({ behavior: 'smooth' });
-          }
-        }, 310); 
-        e.preventDefault();
+  document.addEventListener(
+    "click",
+    function (e) {
+      const linkElement = e.target.closest('a[href^="#"]');
+      if (linkElement && linkElement.closest('[data-close-popup="true"]')) {
+        const targetPopup = linkElement.closest("[data-popup]");
+        if (targetPopup) {
+          closePopup(targetPopup);
+          const href = linkElement.getAttribute("href");
+          setTimeout(() => {
+            const targetElement = document.querySelector(href);
+            if (targetElement) {
+              targetElement.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 310);
+          e.preventDefault();
+        }
       }
-    }
-  }, true);
+    },
+    true
+  );
 
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape") {
@@ -1799,14 +1954,12 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
-
-
 /******************************************************************************
  * SWIPER GÄSTESTIMMEN
  *****************************************************************************/
 document.addEventListener("DOMContentLoaded", function () {
-  const swiper = new Swiper('.swiper.is-reviews', {
-    effect: 'fade',
+  const swiper = new Swiper(".swiper.is-reviews", {
+    effect: "fade",
     fadeEffect: {
       crossFade: true,
     },
@@ -1815,14 +1968,14 @@ document.addEventListener("DOMContentLoaded", function () {
     spaceBetween: 32,
     rewind: true,
     navigation: {
-      nextEl: '.reviews_next-btn',
-      prevEl: '.reviews_prev-btn',
+      nextEl: ".reviews_next-btn",
+      prevEl: ".reviews_prev-btn",
     },
     pagination: {
-      el: '.reviews_bullets-wrapper',
+      el: ".reviews_bullets-wrapper",
       clickable: true,
-      bulletClass: 'reviews_bullet',
-      bulletActiveClass: 'is-current',
+      bulletClass: "reviews_bullet",
+      bulletActiveClass: "is-current",
     },
     keyboard: {
       enabled: true,
@@ -1838,118 +1991,126 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /******************************************************************************
-* ROOMS TABS & SWIPER
-*****************************************************************************/
-document.addEventListener('DOMContentLoaded', () => {
-  const roomsSection = document.querySelector('.section_rooms');
+ * ROOMS TABS & SWIPER
+ *****************************************************************************/
+document.addEventListener("DOMContentLoaded", () => {
+  const roomsSection = document.querySelector(".section_rooms");
   if (!roomsSection) return;
 
   // Tablist (Ebene 1)
-  const tabList = roomsSection.querySelector('[data-tab-list]');
-  
+  const tabList = roomsSection.querySelector("[data-tab-list]");
+
   // Tab-Items (Ebene 2) - diese sollten role="tab" haben
-  const tabItems = roomsSection.querySelectorAll('.rooms_tabs-collection-item');
-  
+  const tabItems = roomsSection.querySelectorAll(".rooms_tabs-collection-item");
+
   // Trigger-Elemente (Ebene 3) - diese sollten KEINE ARIA-Attribute haben
-  const triggerElements = roomsSection.querySelectorAll('[data-tab]');
-  
+  const triggerElements = roomsSection.querySelectorAll("[data-tab]");
+
   // Inhalte der Tabs
-  const tabContents = roomsSection.querySelectorAll('[data-target-tab]');
-  
+  const tabContents = roomsSection.querySelectorAll("[data-target-tab]");
+
   // Prüfe auf leere Tabs und blende sie aus
   function hideEmptyTabs() {
     let visibleTabCount = 0;
     let firstVisibleTabId = null;
-    
+
     // Durchlaufe alle Tab-Trigger und prüfe die zugehörigen Inhalte
-    triggerElements.forEach(trigger => {
-      const tabId = trigger.getAttribute('data-tab');
+    triggerElements.forEach((trigger) => {
+      const tabId = trigger.getAttribute("data-tab");
       if (!tabId) return;
-      
-      const tabContent = roomsSection.querySelector(`[data-target-tab="${tabId}"]`);
+
+      const tabContent = roomsSection.querySelector(
+        `[data-target-tab="${tabId}"]`
+      );
       if (!tabContent) return;
-      
-      const tabPane = tabContent.querySelector('.w-dyn-list');
+
+      const tabPane = tabContent.querySelector(".w-dyn-list");
       if (!tabPane) return;
-      
+
       // Prüfe, ob "No items found" Text vorhanden ist oder keine Items in der Liste sind
-      const emptyMessage = tabPane.querySelector('.w-dyn-empty');
-      const hasItems = tabPane.querySelector('.w-dyn-items')?.children.length > 0;
-      
-      const isEmpty = (emptyMessage && getComputedStyle(emptyMessage).display !== 'none') || !hasItems;
-      
+      const emptyMessage = tabPane.querySelector(".w-dyn-empty");
+      const hasItems =
+        tabPane.querySelector(".w-dyn-items")?.children.length > 0;
+
+      const isEmpty =
+        (emptyMessage && getComputedStyle(emptyMessage).display !== "none") ||
+        !hasItems;
+
       if (isEmpty) {
         // Verstecke den Tab-Trigger (und sein übergeordnetes Element)
-        const tabItem = trigger.closest('.rooms_tabs-collection-item');
-        if (tabItem) tabItem.style.display = 'none';
+        const tabItem = trigger.closest(".rooms_tabs-collection-item");
+        if (tabItem) tabItem.style.display = "none";
       } else {
         visibleTabCount++;
         if (!firstVisibleTabId) firstVisibleTabId = tabId;
       }
     });
-    
+
     // Wenn es keine sichtbaren Tabs gibt, gesamte Sektion ausblenden
     if (visibleTabCount === 0) {
-      roomsSection.style.display = 'none';
+      roomsSection.style.display = "none";
     } else if (firstVisibleTabId) {
       // Setze den ersten sichtbaren Tab als aktiv
       setActiveTab(firstVisibleTabId);
       initSwiper(firstVisibleTabId);
     }
-    
+
     return { visibleTabCount, firstVisibleTabId };
   }
 
   // Setze role="tablist" auf das Tablist-Element
   if (tabList) {
-    tabList.setAttribute('role', 'tablist');
+    tabList.setAttribute("role", "tablist");
   }
 
   let currentSwiper = null;
 
   function setActiveTab(tabId) {
     // Visuelles Feedback für Trigger-Elemente zurücksetzen
-    triggerElements.forEach(trigger => {
-      trigger.classList.remove('is-custom-current');
+    triggerElements.forEach((trigger) => {
+      trigger.classList.remove("is-custom-current");
     });
-    
+
     // ARIA-Attribute auf Tab-Elementen (Ebene 2) zurücksetzen
-    tabItems.forEach(tabItem => {
+    tabItems.forEach((tabItem) => {
       // Das tatsächliche Tab-Element erhält aria-selected="false"
-      tabItem.setAttribute('aria-selected', 'false');
-      
+      tabItem.setAttribute("aria-selected", "false");
+
       // Sicherstellen, dass eventuell vorhandene Trigger-Elemente kein aria-selected haben
-      const childTrigger = tabItem.querySelector('[data-tab]');
+      const childTrigger = tabItem.querySelector("[data-tab]");
       if (childTrigger) {
-        childTrigger.removeAttribute('aria-selected');
+        childTrigger.removeAttribute("aria-selected");
       }
     });
-    
+
     // Tab-Inhalte ausblenden
-    tabContents.forEach(content => {
-      content.classList.add('hide');
-      content.setAttribute('aria-hidden', 'true');
+    tabContents.forEach((content) => {
+      content.classList.add("hide");
+      content.setAttribute("aria-hidden", "true");
     });
 
     // Aktiven Trigger finden
     const activeTrigger = roomsSection.querySelector(`[data-tab="${tabId}"]`);
     if (!activeTrigger) return;
-    
+
     // Visuelles Feedback für aktiven Trigger
-    activeTrigger.classList.add('is-custom-current');
-    
+    activeTrigger.classList.add("is-custom-current");
+
     // ARIA-Attribute für übergeordnetes Tab-Element setzen
-    const parentTabItem = activeTrigger.closest('[role="tab"]') || 
-                          activeTrigger.closest('.rooms_tabs-collection-item');
+    const parentTabItem =
+      activeTrigger.closest('[role="tab"]') ||
+      activeTrigger.closest(".rooms_tabs-collection-item");
     if (parentTabItem) {
-      parentTabItem.setAttribute('aria-selected', 'true');
+      parentTabItem.setAttribute("aria-selected", "true");
     }
-    
+
     // Zugehörigen Inhalt anzeigen
-    const activeContent = roomsSection.querySelector(`[data-target-tab="${tabId}"]`);
+    const activeContent = roomsSection.querySelector(
+      `[data-target-tab="${tabId}"]`
+    );
     if (activeContent) {
-      activeContent.classList.remove('hide');
-      activeContent.setAttribute('aria-hidden', 'false');
+      activeContent.classList.remove("hide");
+      activeContent.setAttribute("aria-hidden", "false");
     }
   }
 
@@ -1960,12 +2121,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const container = roomsSection.querySelector(`[data-swiper="${tabId}"]`);
     if (!container) return;
-    
+
     // Prüfe, ob der Container leer ist
-    const emptyMessage = container.querySelector('.w-dyn-empty');
-    const hasItems = container.querySelector('.w-dyn-items')?.children.length > 0;
-    
-    if ((emptyMessage && getComputedStyle(emptyMessage).display !== 'none') || !hasItems) {
+    const emptyMessage = container.querySelector(".w-dyn-empty");
+    const hasItems =
+      container.querySelector(".w-dyn-items")?.children.length > 0;
+
+    if (
+      (emptyMessage && getComputedStyle(emptyMessage).display !== "none") ||
+      !hasItems
+    ) {
       return; // Initialisiere den Swiper nicht für leere Container
     }
 
@@ -1976,14 +2141,14 @@ document.addEventListener('DOMContentLoaded', () => {
       spaceBetween: 16,
       rewind: false,
       navigation: {
-        nextEl: '.rooms_next-btn',
-        prevEl: '.rooms_prev-btn',
+        nextEl: ".rooms_next-btn",
+        prevEl: ".rooms_prev-btn",
       },
       pagination: {
-        el: '.rooms_bullets-wrapper',
+        el: ".rooms_bullets-wrapper",
         clickable: true,
-        bulletClass: 'rooms_bullet',
-        bulletActiveClass: 'is-current',
+        bulletClass: "rooms_bullet",
+        bulletActiveClass: "is-current",
       },
       keyboard: {
         enabled: true,
@@ -2008,14 +2173,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Zuerst leere Tabs prüfen und ausblenden
   const { visibleTabCount, firstVisibleTabId } = hideEmptyTabs();
-  
+
   // Wenn es sichtbare Tabs gibt, Event-Listener für Klicks hinzufügen
   if (visibleTabCount > 0) {
-    triggerElements.forEach(trigger => {
+    triggerElements.forEach((trigger) => {
       // Nur für sichtbare Tabs Event-Listener hinzufügen
-      if (trigger.closest('.rooms_tabs-collection-item')?.style.display !== 'none') {
-        trigger.addEventListener('click', () => {
-          const tabId = trigger.getAttribute('data-tab');
+      if (
+        trigger.closest(".rooms_tabs-collection-item")?.style.display !== "none"
+      ) {
+        trigger.addEventListener("click", () => {
+          const tabId = trigger.getAttribute("data-tab");
           setActiveTab(tabId);
           initSwiper(tabId);
         });
@@ -2024,120 +2191,129 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-
 /******************************************************************************
-* OFFERS TABS & SWIPER
-*****************************************************************************/
-document.addEventListener('DOMContentLoaded', () => {
-  const offersSection = document.querySelector('.section_offers');
+ * OFFERS TABS & SWIPER
+ *****************************************************************************/
+document.addEventListener("DOMContentLoaded", () => {
+  const offersSection = document.querySelector(".section_offers");
   if (!offersSection) return;
 
   // Tablist (Ebene 1)
-  const tabList = offersSection.querySelector('[data-tab-list]');
-  
+  const tabList = offersSection.querySelector("[data-tab-list]");
+
   // Tab-Items (Ebene 2) - diese sollten role="tab" haben
-  const tabItems = offersSection.querySelectorAll('.offers_tabs-collection-item');
-  
+  const tabItems = offersSection.querySelectorAll(
+    ".offers_tabs-collection-item"
+  );
+
   // Trigger-Elemente (Ebene 3) - diese sollten KEINE ARIA-Attribute haben
-  const triggerElements = offersSection.querySelectorAll('[data-tab]');
-  
+  const triggerElements = offersSection.querySelectorAll("[data-tab]");
+
   // Inhalte der Tabs
-  const tabContents = offersSection.querySelectorAll('[data-target-tab]');
-  
+  const tabContents = offersSection.querySelectorAll("[data-target-tab]");
+
   // Prüfe auf leere Tabs und blende sie aus
   function hideEmptyTabs() {
     let visibleTabCount = 0;
     let firstVisibleTabId = null;
-    
+
     // Durchlaufe alle Tab-Trigger und prüfe die zugehörigen Inhalte
-    triggerElements.forEach(trigger => {
-      const tabId = trigger.getAttribute('data-tab');
+    triggerElements.forEach((trigger) => {
+      const tabId = trigger.getAttribute("data-tab");
       if (!tabId) return;
-      
-      const tabContent = offersSection.querySelector(`[data-target-tab="${tabId}"]`);
+
+      const tabContent = offersSection.querySelector(
+        `[data-target-tab="${tabId}"]`
+      );
       if (!tabContent) return;
-      
-      const tabPane = tabContent.querySelector('.w-dyn-list');
+
+      const tabPane = tabContent.querySelector(".w-dyn-list");
       if (!tabPane) return;
-      
+
       // Prüfe, ob "No items found" Text vorhanden ist oder keine Items in der Liste sind
-      const emptyMessage = tabPane.querySelector('.w-dyn-empty');
-      const hasItems = tabPane.querySelector('.w-dyn-items')?.children.length > 0;
-      
-      const isEmpty = (emptyMessage && getComputedStyle(emptyMessage).display !== 'none') || !hasItems;
-      
+      const emptyMessage = tabPane.querySelector(".w-dyn-empty");
+      const hasItems =
+        tabPane.querySelector(".w-dyn-items")?.children.length > 0;
+
+      const isEmpty =
+        (emptyMessage && getComputedStyle(emptyMessage).display !== "none") ||
+        !hasItems;
+
       if (isEmpty) {
         // Verstecke den Tab-Trigger (und sein übergeordnetes Element)
-        const tabItem = trigger.closest('.offers_tabs-collection-item');
-        if (tabItem) tabItem.style.display = 'none';
+        const tabItem = trigger.closest(".offers_tabs-collection-item");
+        if (tabItem) tabItem.style.display = "none";
       } else {
         visibleTabCount++;
         if (!firstVisibleTabId) firstVisibleTabId = tabId;
       }
     });
-    
+
     // Wenn es keine sichtbaren Tabs gibt, gesamte Sektion ausblenden
     if (visibleTabCount === 0) {
-      offersSection.style.display = 'none';
+      offersSection.style.display = "none";
     } else if (firstVisibleTabId) {
       // Setze den ersten sichtbaren Tab als aktiv
       setActiveTab(firstVisibleTabId);
       initSwiper(firstVisibleTabId);
     }
-    
+
     return { visibleTabCount, firstVisibleTabId };
   }
 
   // Setze role="tablist" auf das Tablist-Element
   if (tabList) {
-    tabList.setAttribute('role', 'tablist');
+    tabList.setAttribute("role", "tablist");
   }
 
   let currentSwiper = null;
 
   function setActiveTab(tabId) {
     // Visuelles Feedback für Trigger-Elemente zurücksetzen
-    triggerElements.forEach(trigger => {
-      trigger.classList.remove('is-custom-current');
+    triggerElements.forEach((trigger) => {
+      trigger.classList.remove("is-custom-current");
     });
-    
+
     // ARIA-Attribute auf Tab-Elementen (Ebene 2) zurücksetzen
-    tabItems.forEach(tabItem => {
+    tabItems.forEach((tabItem) => {
       // Das tatsächliche Tab-Element erhält aria-selected="false"
-      tabItem.setAttribute('aria-selected', 'false');
-      
+      tabItem.setAttribute("aria-selected", "false");
+
       // Sicherstellen, dass eventuell vorhandene Trigger-Elemente kein aria-selected haben
-      const childTrigger = tabItem.querySelector('[data-tab]');
+      const childTrigger = tabItem.querySelector("[data-tab]");
       if (childTrigger) {
-        childTrigger.removeAttribute('aria-selected');
+        childTrigger.removeAttribute("aria-selected");
       }
     });
-    
+
     // Tab-Inhalte ausblenden
-    tabContents.forEach(content => {
-      content.classList.add('hide');
-      content.setAttribute('aria-hidden', 'true');
+    tabContents.forEach((content) => {
+      content.classList.add("hide");
+      content.setAttribute("aria-hidden", "true");
     });
 
     // Aktiven Trigger finden
     const activeTrigger = offersSection.querySelector(`[data-tab="${tabId}"]`);
     if (!activeTrigger) return;
-    
+
     // Visuelles Feedback für aktiven Trigger
-    activeTrigger.classList.add('is-custom-current');
-    
+    activeTrigger.classList.add("is-custom-current");
+
     // ARIA-Attribute für übergeordnetes Tab-Element setzen
-    const parentTabItem = activeTrigger.closest('[role="tab"]') || 
-                          activeTrigger.closest('.offers_tabs-collection-item');
+    const parentTabItem =
+      activeTrigger.closest('[role="tab"]') ||
+      activeTrigger.closest(".offers_tabs-collection-item");
     if (parentTabItem) {
-      parentTabItem.setAttribute('aria-selected', 'true');
+      parentTabItem.setAttribute("aria-selected", "true");
     }
-    
+
     // Zugehörigen Inhalt anzeigen
-    const activeContent = offersSection.querySelector(`[data-target-tab="${tabId}"]`);
+    const activeContent = offersSection.querySelector(
+      `[data-target-tab="${tabId}"]`
+    );
     if (activeContent) {
-      activeContent.classList.remove('hide');
-      activeContent.setAttribute('aria-hidden', 'false');
+      activeContent.classList.remove("hide");
+      activeContent.setAttribute("aria-hidden", "false");
     }
   }
 
@@ -2148,12 +2324,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const container = offersSection.querySelector(`[data-swiper="${tabId}"]`);
     if (!container) return;
-    
+
     // Prüfe, ob der Container leer ist
-    const emptyMessage = container.querySelector('.w-dyn-empty');
-    const hasItems = container.querySelector('.w-dyn-items')?.children.length > 0;
-    
-    if ((emptyMessage && getComputedStyle(emptyMessage).display !== 'none') || !hasItems) {
+    const emptyMessage = container.querySelector(".w-dyn-empty");
+    const hasItems =
+      container.querySelector(".w-dyn-items")?.children.length > 0;
+
+    if (
+      (emptyMessage && getComputedStyle(emptyMessage).display !== "none") ||
+      !hasItems
+    ) {
       return; // Initialisiere den Swiper nicht für leere Container
     }
 
@@ -2164,14 +2344,14 @@ document.addEventListener('DOMContentLoaded', () => {
       spaceBetween: 16,
       rewind: false,
       navigation: {
-        nextEl: '.offers_next-btn',
-        prevEl: '.offers_prev-btn',
+        nextEl: ".offers_next-btn",
+        prevEl: ".offers_prev-btn",
       },
       pagination: {
-        el: '.offers_bullets-wrapper',
+        el: ".offers_bullets-wrapper",
         clickable: true,
-        bulletClass: 'offers_bullet',
-        bulletActiveClass: 'is-current',
+        bulletClass: "offers_bullet",
+        bulletActiveClass: "is-current",
       },
       keyboard: {
         enabled: true,
@@ -2196,14 +2376,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Zuerst leere Tabs prüfen und ausblenden
   const { visibleTabCount, firstVisibleTabId } = hideEmptyTabs();
-  
+
   // Wenn es sichtbare Tabs gibt, Event-Listener für Klicks hinzufügen
   if (visibleTabCount > 0) {
-    triggerElements.forEach(trigger => {
+    triggerElements.forEach((trigger) => {
       // Nur für sichtbare Tabs Event-Listener hinzufügen
-      if (trigger.closest('.offers_tabs-collection-item')?.style.display !== 'none') {
-        trigger.addEventListener('click', () => {
-          const tabId = trigger.getAttribute('data-tab');
+      if (
+        trigger.closest(".offers_tabs-collection-item")?.style.display !==
+        "none"
+      ) {
+        trigger.addEventListener("click", () => {
+          const tabId = trigger.getAttribute("data-tab");
           setActiveTab(tabId);
           initSwiper(tabId);
         });
@@ -2212,12 +2395,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-
 /******************************************************************************
-* SWIPER SOCIAL MEDIA REVIEWS
-*****************************************************************************/
+ * SWIPER SOCIAL MEDIA REVIEWS
+ *****************************************************************************/
 document.addEventListener("DOMContentLoaded", function () {
-  const swiper = new Swiper('.swiper.is-sm-reviews', {
+  const swiper = new Swiper(".swiper.is-sm-reviews", {
     ...swiperAnimationConfig,
     autoHeight: false,
     slidesPerView: 1.2,
@@ -2226,8 +2408,8 @@ document.addEventListener("DOMContentLoaded", function () {
     spaceBetween: 16,
     rewind: true,
     navigation: {
-      nextEl: '.sm-reviews_next-btn',
-      prevEl: '.sm-reviews_prev-btn',
+      nextEl: ".sm-reviews_next-btn",
+      prevEl: ".sm-reviews_prev-btn",
     },
     keyboard: {
       enabled: true,
@@ -2239,8 +2421,8 @@ document.addEventListener("DOMContentLoaded", function () {
         spaceBetween: 24,
       },
       992: {
-        slidesPerView: 2.2,  
-        spaceBetween: 24,    
+        slidesPerView: 2.2,
+        spaceBetween: 24,
       },
       1140: {
         centeredSlides: false,
@@ -2251,27 +2433,30 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
-
 /******************************************************************************
-* POPUP GALLERY SWIPER MIT THUMBS
-*****************************************************************************/
+ * POPUP GALLERY SWIPER MIT THUMBS
+ *****************************************************************************/
 document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll('.popup_gallery').forEach(container => {
+  document.querySelectorAll(".popup_gallery").forEach((container) => {
     // Cache häufig verwendete DOM-Elemente
-    const mainSliderEl = container.querySelector('.swiper.is-popup');
-    const thumbsSliderEl = container.querySelector('.swiper.is-popup-thumbs');
-    const imgWrapper = container.querySelector('.popup_gallery-img-wrapper');
-    const navPrev = container.querySelector('.popup_gallery-prev-btn');
-    const navNext = container.querySelector('.popup_gallery-next-btn');
+    const mainSliderEl = container.querySelector(".swiper.is-popup");
+    const thumbsSliderEl = container.querySelector(".swiper.is-popup-thumbs");
+    const imgWrapper = container.querySelector(".popup_gallery-img-wrapper");
+    const navPrev = container.querySelector(".popup_gallery-prev-btn");
+    const navNext = container.querySelector(".popup_gallery-next-btn");
 
     if (!mainSliderEl) {
-      console.error('Kein Hauptslider-Element (.swiper.is-popup) im Container gefunden.');
+      console.error(
+        "Kein Hauptslider-Element (.swiper.is-popup) im Container gefunden."
+      );
       return;
     }
 
-    const mainWrapper = mainSliderEl.querySelector('.swiper-wrapper.is-popup');
+    const mainWrapper = mainSliderEl.querySelector(".swiper-wrapper.is-popup");
     if (!mainWrapper) {
-      console.error('Kein Wrapper im Hauptslider (.swiper-wrapper.is-popup) im Container gefunden.');
+      console.error(
+        "Kein Wrapper im Hauptslider (.swiper-wrapper.is-popup) im Container gefunden."
+      );
       return;
     }
     while (mainWrapper.firstChild) {
@@ -2279,13 +2464,19 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (!thumbsSliderEl) {
-      console.error('Kein Thumbs-Slider-Element (.swiper.is-popup-thumbs) im Container gefunden.');
+      console.error(
+        "Kein Thumbs-Slider-Element (.swiper.is-popup-thumbs) im Container gefunden."
+      );
       return;
     }
 
-    const thumbsWrapper = thumbsSliderEl.querySelector('.swiper-wrapper.is-popup-thumbs');
+    const thumbsWrapper = thumbsSliderEl.querySelector(
+      ".swiper-wrapper.is-popup-thumbs"
+    );
     if (!thumbsWrapper) {
-      console.error('Kein Wrapper im Thumbs-Slider (.swiper-wrapper.is-popup-thumbs) im Container gefunden.');
+      console.error(
+        "Kein Wrapper im Thumbs-Slider (.swiper-wrapper.is-popup-thumbs) im Container gefunden."
+      );
       return;
     }
     while (thumbsWrapper.firstChild) {
@@ -2293,41 +2484,49 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (!imgWrapper) {
-      console.error('Kein Bild-Wrapper (.popup_gallery-img-wrapper) im Container gefunden.');
+      console.error(
+        "Kein Bild-Wrapper (.popup_gallery-img-wrapper) im Container gefunden."
+      );
       return;
     }
 
-    const imgURLItems = imgWrapper.querySelectorAll('.popup_gallery-img-url[data-img-url]');
+    const imgURLItems = imgWrapper.querySelectorAll(
+      ".popup_gallery-img-url[data-img-url]"
+    );
     if (!imgURLItems.length) {
-      console.error('Keine Bild-URLs in .popup_gallery-img-url im Container gefunden.');
+      console.error(
+        "Keine Bild-URLs in .popup_gallery-img-url im Container gefunden."
+      );
       return;
     }
-    
-    imgURLItems.forEach(item => {
-      const imgURL = item.getAttribute('data-img-url');
+
+    imgURLItems.forEach((item) => {
+      const imgURL = item.getAttribute("data-img-url");
       if (imgURL) {
-        const slide = document.createElement('div');
-        slide.classList.add('swiper-slide', 'is-popup');
-        const img = document.createElement('img');
+        const slide = document.createElement("div");
+        slide.classList.add("swiper-slide", "is-popup");
+        const img = document.createElement("img");
         img.src = imgURL;
         img.loading = "lazy";
-        img.classList.add('popup_gallery-img');
+        img.classList.add("popup_gallery-img");
         slide.appendChild(img);
         mainWrapper.appendChild(slide);
 
-        const thumbSlide = document.createElement('div');
-        thumbSlide.classList.add('swiper-slide', 'is-popup-thumbs');
-        const thumbImg = document.createElement('img');
+        const thumbSlide = document.createElement("div");
+        thumbSlide.classList.add("swiper-slide", "is-popup-thumbs");
+        const thumbImg = document.createElement("img");
         thumbImg.src = imgURL;
         thumbImg.loading = "lazy";
-        thumbImg.classList.add('popup_gallery-thumb-img');
+        thumbImg.classList.add("popup_gallery-thumb-img");
         thumbSlide.appendChild(thumbImg);
         thumbsWrapper.appendChild(thumbSlide);
       }
     });
-    
+
     if (!navPrev || !navNext) {
-      console.warn('Navigationselemente (.popup_gallery-prev-btn / .popup_gallery-next-btn) im Container nicht gefunden.');
+      console.warn(
+        "Navigationselemente (.popup_gallery-prev-btn / .popup_gallery-next-btn) im Container nicht gefunden."
+      );
     }
 
     const thumbsSwiper = new Swiper(thumbsSliderEl, {
@@ -2351,10 +2550,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const mainSwiper = new Swiper(mainSliderEl, {
       slidesPerView: 1,
       spaceBetween: 16,
-      navigation: navPrev && navNext ? {
-        nextEl: navNext,
-        prevEl: navPrev,
-      } : false,
+      navigation:
+        navPrev && navNext
+          ? {
+              nextEl: navNext,
+              prevEl: navPrev,
+            }
+          : false,
       keyboard: {
         enabled: true,
         onlyInViewport: true,
@@ -2366,7 +2568,7 @@ document.addEventListener("DOMContentLoaded", function () {
         thresholdDelta: 10,
       },
       thumbs: {
-        swiper: thumbsSwiper
+        swiper: thumbsSwiper,
       },
       breakpoints: {
         480: {
@@ -2382,185 +2584,187 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
-
 /******************************************************************************
-* ROOMS & OFFERS TO FORM
-*****************************************************************************/
-document.addEventListener('click', function(e) {
+ * ROOMS & OFFERS TO FORM
+ *****************************************************************************/
+document.addEventListener("click", function (e) {
   // Cache häufig verwendete DOM-Elemente
-  const roomElement = document.querySelector('[data-room-element]');
-  const offerElement = document.querySelector('[data-offer-element]');
-  const wrapper = document.querySelector('[data-room-offer-wrapper]');
+  const roomElement = document.querySelector("[data-room-element]");
+  const offerElement = document.querySelector("[data-offer-element]");
+  const wrapper = document.querySelector("[data-room-offer-wrapper]");
   const roomInput = document.querySelector('[name="selected-room"]');
   const offerInput = document.querySelector('[name="selected-offer"]');
-  const roomNameTarget = document.querySelector('[data-room-name-target]');
-  const roomImgTarget = document.querySelector('[data-room-image-target]');
-  const offerNameTarget = document.querySelector('[data-offer-name-target]');
-  const offerImgTarget = document.querySelector('[data-offer-image-target]');
+  const roomNameTarget = document.querySelector("[data-room-name-target]");
+  const roomImgTarget = document.querySelector("[data-room-image-target]");
+  const offerNameTarget = document.querySelector("[data-offer-name-target]");
+  const offerImgTarget = document.querySelector("[data-offer-image-target]");
 
   const roomBtn = e.target.closest('[data-custom="select-room"]');
   if (roomBtn) {
     e.preventDefault();
-    
-    const popup = roomBtn.closest('[data-popup]');
+
+    const popup = roomBtn.closest("[data-popup]");
     let card;
     let popupId;
-    
+
     if (popup) {
-      popupId = popup.getAttribute('data-popup');
+      popupId = popup.getAttribute("data-popup");
       card = document.querySelector(`[data-popup-source="${popupId}"]`);
     } else {
-      card = roomBtn.closest('.rooms_card');
-      const detailsBtn = card.querySelector('[data-open-popup]');
+      card = roomBtn.closest(".rooms_card");
+      const detailsBtn = card.querySelector("[data-open-popup]");
       if (detailsBtn) {
-        popupId = detailsBtn.getAttribute('data-open-popup');
+        popupId = detailsBtn.getAttribute("data-open-popup");
       }
     }
-    
+
     if (!card) return;
-    
-    const nameEl = card.querySelector('[data-room-name]');
-    const imgEl = card.querySelector('[data-room-image]');
-    const name = nameEl ? nameEl.textContent.trim() : '';
-    const img = imgEl ? imgEl.getAttribute('src') : '';
-    
-    if(roomNameTarget) {
-      if (roomNameTarget.tagName === 'INPUT') {
+
+    const nameEl = card.querySelector("[data-room-name]");
+    const imgEl = card.querySelector("[data-room-image]");
+    const name = nameEl ? nameEl.textContent.trim() : "";
+    const img = imgEl ? imgEl.getAttribute("src") : "";
+
+    if (roomNameTarget) {
+      if (roomNameTarget.tagName === "INPUT") {
         roomNameTarget.value = name;
       } else {
         roomNameTarget.textContent = name;
       }
     }
-    
-    if(roomImgTarget) roomImgTarget.src = img;
-    if(roomInput) roomInput.value = name;
-    
-    if(roomElement) {
-      roomElement.style.display = 'block';
-      
-      const roomButton = roomElement.querySelector('.form_r-o-wrapper[data-open-popup]');
+
+    if (roomImgTarget) roomImgTarget.src = img;
+    if (roomInput) roomInput.value = name;
+
+    if (roomElement) {
+      roomElement.style.display = "block";
+
+      const roomButton = roomElement.querySelector(
+        ".form_r-o-wrapper[data-open-popup]"
+      );
       if (roomButton && popupId) {
-        roomButton.setAttribute('data-open-popup', popupId);
+        roomButton.setAttribute("data-open-popup", popupId);
       }
     }
-    
-    if(wrapper) wrapper.style.display = 'flex';
+
+    if (wrapper) wrapper.style.display = "flex";
   }
-  
+
   const offerBtn = e.target.closest('[data-custom="select-offer"]');
   if (offerBtn) {
     e.preventDefault();
-    
-    const popup = offerBtn.closest('[data-popup]');
+
+    const popup = offerBtn.closest("[data-popup]");
     let card;
     let popupId;
-    
+
     if (popup) {
-      popupId = popup.getAttribute('data-popup');
+      popupId = popup.getAttribute("data-popup");
       card = document.querySelector(`[data-popup-source="${popupId}"]`);
     } else {
-      card = offerBtn.closest('.offers_card');
-      const detailsBtn = card.querySelector('[data-open-popup]');
+      card = offerBtn.closest(".offers_card");
+      const detailsBtn = card.querySelector("[data-open-popup]");
       if (detailsBtn) {
-        popupId = detailsBtn.getAttribute('data-open-popup');
+        popupId = detailsBtn.getAttribute("data-open-popup");
       }
     }
-    
+
     if (!card) return;
-    
-    const nameEl = card.querySelector('[data-offer-name]');
-    const imgEl = card.querySelector('[data-offer-image]');
-    const name = nameEl ? nameEl.textContent.trim() : '';
-    const img = imgEl ? imgEl.getAttribute('src') : '';
-    
-    if(offerNameTarget) {
-      if (offerNameTarget.tagName === 'INPUT') {
+
+    const nameEl = card.querySelector("[data-offer-name]");
+    const imgEl = card.querySelector("[data-offer-image]");
+    const name = nameEl ? nameEl.textContent.trim() : "";
+    const img = imgEl ? imgEl.getAttribute("src") : "";
+
+    if (offerNameTarget) {
+      if (offerNameTarget.tagName === "INPUT") {
         offerNameTarget.value = name;
       } else {
         offerNameTarget.textContent = name;
       }
     }
-    
-    if(offerImgTarget) offerImgTarget.src = img;
-    if(offerInput) offerInput.value = name;
-    
-    if(offerElement) {
-      offerElement.style.display = 'block';
-      
-      const offerButton = offerElement.querySelector('.form_r-o-wrapper[data-open-popup]');
+
+    if (offerImgTarget) offerImgTarget.src = img;
+    if (offerInput) offerInput.value = name;
+
+    if (offerElement) {
+      offerElement.style.display = "block";
+
+      const offerButton = offerElement.querySelector(
+        ".form_r-o-wrapper[data-open-popup]"
+      );
       if (offerButton && popupId) {
-        offerButton.setAttribute('data-open-popup', popupId);
+        offerButton.setAttribute("data-open-popup", popupId);
       }
     }
-    
-    if(wrapper) wrapper.style.display = 'flex';
+
+    if (wrapper) wrapper.style.display = "flex";
   }
-  
-  const roomDelete = e.target.closest('[data-room-delete]');
+
+  const roomDelete = e.target.closest("[data-room-delete]");
   if (roomDelete) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const event = e || window.event;
     if (event.stopImmediatePropagation) {
       event.stopImmediatePropagation();
     }
-    
-    if (roomElement) roomElement.style.display = 'none';
-    if (roomInput) roomInput.value = '';
+
+    if (roomElement) roomElement.style.display = "none";
+    if (roomInput) roomInput.value = "";
     // Zusätzliche Sicherheit: Falls roomNameTarget ein Input ist, auch diesen leeren
-    if (roomNameTarget && roomNameTarget.tagName === 'INPUT') {
-      roomNameTarget.value = '';
+    if (roomNameTarget && roomNameTarget.tagName === "INPUT") {
+      roomNameTarget.value = "";
     }
-    
-    if (offerElement && offerElement.style.display === 'none' && wrapper) {
-      wrapper.style.display = 'none';
+
+    if (offerElement && offerElement.style.display === "none" && wrapper) {
+      wrapper.style.display = "none";
     }
-    
+
     return false;
   }
-  
-  const offerDelete = e.target.closest('[data-offer-delete]');
+
+  const offerDelete = e.target.closest("[data-offer-delete]");
   if (offerDelete) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const event = e || window.event;
     if (event.stopImmediatePropagation) {
       event.stopImmediatePropagation();
     }
-    
-    if (offerElement) offerElement.style.display = 'none';
-    if (offerInput) offerInput.value = '';
+
+    if (offerElement) offerElement.style.display = "none";
+    if (offerInput) offerInput.value = "";
     // Zusätzliche Sicherheit: Falls offerNameTarget ein Input ist, auch diesen leeren
-    if (offerNameTarget && offerNameTarget.tagName === 'INPUT') {
-      offerNameTarget.value = '';
+    if (offerNameTarget && offerNameTarget.tagName === "INPUT") {
+      offerNameTarget.value = "";
     }
-    
-    if (roomElement && roomElement.style.display === 'none' && wrapper) {
-      wrapper.style.display = 'none';
+
+    if (roomElement && roomElement.style.display === "none" && wrapper) {
+      wrapper.style.display = "none";
     }
-    
+
     return false;
   }
 });
 
-
 /******************************************************************************
-* ZENTRALE ARIA-KORREKTUREN FÜR BARRIEREFREIHEIT
-*****************************************************************************/
-document.addEventListener("DOMContentLoaded", function() {
+ * ZENTRALE ARIA-KORREKTUREN FÜR BARRIEREFREIHEIT
+ *****************************************************************************/
+document.addEventListener("DOMContentLoaded", function () {
   /**
    * WICHTIGER HINWEIS ZUR ARIA-IMPLEMENTIERUNG:
-   * 
+   *
    * Diese Seite nutzt eine "Zwei-Schichten-Strategie" für ARIA-Attribute:
-   * 
+   *
    * 1. ARIAHelper (hier): Setzt initiale ARIA-Attribute und korrigiert sie nach Timer.
    *    Dies ist notwendig, weil Webflow und Swiper manchmal ARIA-Attribute überschreiben.
-   * 
+   *
    * 2. Modulare Event-Handler: In den einzelnen Komponenten-Blöcken setzen diese
    *    ARIA-Attribute direkt bei Benutzerinteraktionen.
-   * 
+   *
    * Beide Systeme sind notwendig für vollständige Accessibility-Konformität.
    * Das Entfernen einer der beiden Schichten kann zu Accessibility-Fehlern führen.
    */
@@ -2572,59 +2776,64 @@ document.addEventListener("DOMContentLoaded", function() {
      *   - Ebene 2: tabItems (elemente mit role="tab", bekommen aria-selected)
      *   - Ebene 3: triggerElements (klickbare elemente innerhalb der Tabs, KEINE aria-attribute)
      */
-    setRole: function(selector, role, attributes = {}) {
+    setRole: function (selector, role, attributes = {}) {
       const elements = document.querySelectorAll(selector);
       if (elements.length === 0) return;
-      
-      elements.forEach(el => {
-        el.setAttribute('role', role);
+
+      elements.forEach((el) => {
+        el.setAttribute("role", role);
         Object.entries(attributes).forEach(([key, value]) => {
           el.setAttribute(key, value);
         });
       });
     },
-    
+
     /**
      * Korrigiert Tab-bezogene ARIA-Attribute basierend auf der dreistufigen Hierarchie
      * @param {string} tabListSelector - Selektor für Tablist-Container (Ebene 1)
      * @param {string} tabItemsSelector - Selektor für Tab-Elemente (Ebene 2)
      * @param {string} triggerSelector - Selektor für Trigger-Elemente innerhalb der Tabs (Ebene 3)
      */
-    setupTablist: function(tabListSelector, tabItemsSelector, triggerSelector) {
+    setupTablist: function (
+      tabListSelector,
+      tabItemsSelector,
+      triggerSelector
+    ) {
       // Tab-Listen (Ebene 1)
       const tabLists = document.querySelectorAll(tabListSelector);
-      tabLists.forEach(list => {
-        list.setAttribute('role', 'tablist');
+      tabLists.forEach((list) => {
+        list.setAttribute("role", "tablist");
       });
-      
+
       // Tab-Elemente (Ebene 2)
       const tabItems = document.querySelectorAll(tabItemsSelector);
-      tabItems.forEach(tabItem => {
+      tabItems.forEach((tabItem) => {
         // Tab-Element mit korrekter Rolle
-        tabItem.setAttribute('role', 'tab');
-        
+        tabItem.setAttribute("role", "tab");
+
         // Prüfe, ob das Tab aktiv ist (über CSS-Klasse oder Kind-Element)
-        const isActive = tabItem.classList.contains('is-custom-current') || 
-                         tabItem.classList.contains('is-active') ||
-                         tabItem.querySelector('.is-custom-current, .is-active');
-        
+        const isActive =
+          tabItem.classList.contains("is-custom-current") ||
+          tabItem.classList.contains("is-active") ||
+          tabItem.querySelector(".is-custom-current, .is-active");
+
         // Setze aria-selected direkt auf dem Tab-Element
-        tabItem.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        tabItem.setAttribute("aria-selected", isActive ? "true" : "false");
       });
-      
+
       // Trigger-Elemente (Ebene 3) - entferne ARIA-Attribute
       if (triggerSelector) {
         const triggers = document.querySelectorAll(triggerSelector);
-        triggers.forEach(trigger => {
+        triggers.forEach((trigger) => {
           // Trigger sollten keine ARIA-Tab-Attribute haben
-          trigger.removeAttribute('aria-selected');
-          
+          trigger.removeAttribute("aria-selected");
+
           // Bewahre Klassen für visuelles Feedback
           // Diese Klassen werden vom JS-Code für die Darstellung verwendet
         });
       }
     },
-    
+
     /**
      * Korrigiert ARIA für Swiper-basierte Tabs
      * Bei Swiper ist die Struktur:
@@ -2632,45 +2841,48 @@ document.addEventListener("DOMContentLoaded", function() {
      * - Slides (Ebene 2, tabItems)
      * - Buttons/Trigger (Ebene 3)
      */
-    setupSwiperTabs: function() {
+    setupSwiperTabs: function () {
       // Topic-Filter Tabs (im Swiper)
       this.setupTablist(
-        '.swiper-wrapper.is-topic', 
-        '.swiper-wrapper.is-topic .swiper-slide',
-        '.topic_button'
+        ".swiper-wrapper.is-topic",
+        ".swiper-wrapper.is-topic .swiper-slide",
+        ".topic_button"
       );
-      
+
       // Gewöhnliche Collection-basierte Tabs
       this.setupTablist(
-        '.gallery_tabs-collection-list, .rooms_tabs-collection-list, .offers_tabs-collection-list',
-        '.gallery_tabs-collection-item, .rooms_tabs-collection-item, .offers_tabs-collection-item',
+        ".gallery_tabs-collection-list, .rooms_tabs-collection-list, .offers_tabs-collection-list",
+        ".gallery_tabs-collection-item, .rooms_tabs-collection-item, .offers_tabs-collection-item",
         '.gallery_tabs, [class*="tabs"]:not([role="tab"])'
       );
     },
-    
+
     /**
      * Korrigiert Swiper-Karussells für ARIA-Konformität
-     * @param {string} wrapperSelector - Selektor für Swiper-Wrapper 
+     * @param {string} wrapperSelector - Selektor für Swiper-Wrapper
      * @param {string} slideSelector - Selektor für Slides innerhalb des Wrappers
      */
-    setupCarousel: function(wrapperSelector, slideSelector) {
+    setupCarousel: function (wrapperSelector, slideSelector) {
       const wrappers = document.querySelectorAll(wrapperSelector);
       if (wrappers.length === 0) return;
-      
-      wrappers.forEach(wrapper => {
+
+      wrappers.forEach((wrapper) => {
         // Für Karussells ist role="region" semantisch korrekter als role="list"
-        if (wrapper.getAttribute('role') === 'list' || !wrapper.getAttribute('role')) {
-          wrapper.setAttribute('role', 'region');
-          wrapper.setAttribute('aria-roledescription', 'carousel');
+        if (
+          wrapper.getAttribute("role") === "list" ||
+          !wrapper.getAttribute("role")
+        ) {
+          wrapper.setAttribute("role", "region");
+          wrapper.setAttribute("aria-roledescription", "carousel");
         }
-        
+
         // Slides in Karussells sollten role="group" haben
         const slides = wrapper.querySelectorAll(slideSelector);
-        slides.forEach(slide => {
+        slides.forEach((slide) => {
           // Slides mit role="tab" behalten diese Rolle (für Swiper-Tabs)
-          if (slide.getAttribute('role') !== 'tab') {
-            slide.setAttribute('role', 'group');
-            slide.setAttribute('aria-roledescription', 'slide');
+          if (slide.getAttribute("role") !== "tab") {
+            slide.setAttribute("role", "group");
+            slide.setAttribute("aria-roledescription", "slide");
           }
         });
       });
@@ -2679,70 +2891,77 @@ document.addEventListener("DOMContentLoaded", function() {
     /**
      * Führt alle ARIA-Korrekturen aus
      */
-    initAll: function() {
+    initAll: function () {
       // Tab-Systeme einrichten
       this.setupSwiperTabs();
-      
+
       // Karusselle einrichten (nicht-Tab Swiper)
       this.setupCarousel(
-        '.swiper-wrapper:not(.is-topic)',
+        ".swiper-wrapper:not(.is-topic)",
         '.swiper-slide:not([role="tab"])'
       );
-    }
+    },
   };
 
   // ARIA-Korrekturen anwenden
   ARIAHelper.initAll();
-  
+
   // Bei dynamischen Änderungen oder AJAX-Navigationen erneut anwenden
   // z.B. nach Swiper-Initialisierung
   setTimeout(ARIAHelper.initAll.bind(ARIAHelper), 1000);
 });
 
-
 /******************************************************************************
-* LOCATION DROPDOWN AUTO-OPEN
-*****************************************************************************/
-document.addEventListener("DOMContentLoaded", function() {
-// Funktion zum automatischen Öffnen des Location Dropdowns bei Klick auf entsprechende Links
-function setupLocationDropdownLinks() {
-  // Alle Links mit href="#location" finden
-  const locationLinks = document.querySelectorAll('a[href="#location"]');
-  
-  if (!locationLinks.length) return;
-  
-  // DOM-Referenzen einmalig außerhalb der Event-Handler cachen
-  const locationDropdownCheckbox = document.querySelector('.location_dropdown-checkbox');
-  const contentWrapper = document.querySelector('.location_content-wrapper');
-  let focusableElement = null;
-  
-  // Fokussierbare Elemente vorab finden, falls vorhanden
-  if (contentWrapper) {
-    focusableElement = contentWrapper.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-  }
-  
-  if (!locationDropdownCheckbox) return;
-  
-  // Für jeden Link einen Event-Listener hinzufügen
-  locationLinks.forEach(link => {
-    link.addEventListener('click', function(e) {
-      // Standard-Scroll-Verhalten des Browsers beibehalten
-      // Nach dem Scrollen die Checkbox aktivieren
-      
-      // requestAnimationFrame für flüssigere visuelle Änderungen verwenden
-      requestAnimationFrame(() => {
-        // Checkbox auf checked setzen, um das Dropdown zu öffnen
-        locationDropdownCheckbox.checked = true;
-        
-        // Optional: Fokus auf den Inhalt des Dropdowns setzen für bessere Accessibility
-        if (focusableElement) {
-          focusableElement.focus();
-        }
-      });
-    }, { passive: true }); // Passive Event Listener für bessere Scrolling-Performance
-  });
-}
+ * LOCATION DROPDOWN AUTO-OPEN
+ *****************************************************************************/
+document.addEventListener("DOMContentLoaded", function () {
+  // Funktion zum automatischen Öffnen des Location Dropdowns bei Klick auf entsprechende Links
+  function setupLocationDropdownLinks() {
+    // Alle Links mit href="#location" finden
+    const locationLinks = document.querySelectorAll('a[href="#location"]');
 
-// Funktion aufrufen
-setupLocationDropdownLinks();
+    if (!locationLinks.length) return;
+
+    // DOM-Referenzen einmalig außerhalb der Event-Handler cachen
+    const locationDropdownCheckbox = document.querySelector(
+      ".location_dropdown-checkbox"
+    );
+    const contentWrapper = document.querySelector(".location_content-wrapper");
+    let focusableElement = null;
+
+    // Fokussierbare Elemente vorab finden, falls vorhanden
+    if (contentWrapper) {
+      focusableElement = contentWrapper.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+    }
+
+    if (!locationDropdownCheckbox) return;
+
+    // Für jeden Link einen Event-Listener hinzufügen
+    locationLinks.forEach((link) => {
+      link.addEventListener(
+        "click",
+        function (e) {
+          // Standard-Scroll-Verhalten des Browsers beibehalten
+          // Nach dem Scrollen die Checkbox aktivieren
+
+          // requestAnimationFrame für flüssigere visuelle Änderungen verwenden
+          requestAnimationFrame(() => {
+            // Checkbox auf checked setzen, um das Dropdown zu öffnen
+            locationDropdownCheckbox.checked = true;
+
+            // Optional: Fokus auf den Inhalt des Dropdowns setzen für bessere Accessibility
+            if (focusableElement) {
+              focusableElement.focus();
+            }
+          });
+        },
+        { passive: true }
+      ); // Passive Event Listener für bessere Scrolling-Performance
+    });
+  }
+
+  // Funktion aufrufen
+  setupLocationDropdownLinks();
 });

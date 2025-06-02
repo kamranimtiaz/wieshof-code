@@ -460,7 +460,7 @@ class GallerySystem {
     console.log(this.data);
     this.currentSeason = "summer";
     this.currentTopic = null;
-
+    this.galleryTabState = new GalleryTabStateManager();
     this.heroImageManager = null;
     this.galleryImageRenderer = null;
     this.topicSwiper = null;
@@ -572,13 +572,68 @@ class GallerySystem {
 
     this.initializeSwipers();
 
-    if (currentTopic) {
+    // Check if gallery tab was manually selected
+    if (this.galleryTabState.isManuallySelected()) {
+      // Preserve gallery tab selection
+      const activeGalleryTab = this.galleryTabState.getActiveGalleryTab();
+      setTimeout(() => {
+        this.applyGalleryTabFilter(activeGalleryTab);
+      }, 100);
+    } else if (currentTopic) {
+      // Fall back to topic-based selection if no manual gallery tab selection
       setTimeout(() => {
         this.applyTopicFilter();
       }, 100);
     }
   }
+  applyGalleryTabFilter(galleryTabId) {
+    if (!this.gallerySwiper || !galleryTabId) return false;
 
+    let targetIndex = 0;
+    this.gallerySwiper.slides.forEach((slide, idx) => {
+      const slideTopic = (
+        slide.getAttribute("data-topic-target") ||
+        slide.getAttribute("data-gallery-id") ||
+        ""
+      ).toLowerCase();
+      if (slideTopic === galleryTabId.toLowerCase() && targetIndex === 0) {
+        targetIndex = idx;
+      }
+    });
+
+    this.gallerySwiper.slideTo(targetIndex);
+
+    // Update gallery tabs visual state
+    const galleryTabs = document.querySelectorAll(".gallery_tabs");
+    galleryTabs.forEach((tab) => {
+      tab.classList.remove("is-custom-current");
+      const tabTopic = (
+        tab.getAttribute("data-topic-target") ||
+        tab.getAttribute("data-gallery-id") ||
+        ""
+      ).toLowerCase();
+
+      if (tabTopic === galleryTabId.toLowerCase()) {
+        tab.classList.add("is-custom-current");
+      }
+
+      const parentTab = tab.closest('[role="tab"]');
+      if (parentTab) {
+        parentTab.setAttribute(
+          "aria-selected",
+          tabTopic === galleryTabId.toLowerCase() ? "true" : "false"
+        );
+        tab.removeAttribute("aria-selected");
+      } else {
+        tab.setAttribute(
+          "aria-selected",
+          tabTopic === galleryTabId.toLowerCase() ? "true" : "false"
+        );
+      }
+    });
+
+    return true;
+  }
   applyTopicFilter() {
     if (!this.gallerySwiper || !this.currentTopic) return false;
 
@@ -628,12 +683,61 @@ class GallerySystem {
   }
 }
 
+class GalleryTabStateManager {
+  constructor() {
+    this.currentActiveGalleryTab = null;
+    this.isGalleryTabManuallySelected = false;
+  }
+
+  setActiveGalleryTab(tabId) {
+    this.currentActiveGalleryTab = tabId;
+    this.isGalleryTabManuallySelected = true;
+  }
+
+  getActiveGalleryTab() {
+    return this.currentActiveGalleryTab;
+  }
+
+  isManuallySelected() {
+    return this.isGalleryTabManuallySelected;
+  }
+
+  reset() {
+    this.currentActiveGalleryTab = null;
+    this.isGalleryTabManuallySelected = false;
+  }
+}
+
 /******************************************************************************
  * INITIALIZATION
  *****************************************************************************/
 
 document.addEventListener("DOMContentLoaded", () => {
-  new GallerySystem();
+  
+  setTimeout(() => {
+    const gallerySystem = window.gallerySystem || new GallerySystem();
+    
+    // Gallery tab event listeners
+    const galleryTriggerElements = document.querySelectorAll(".gallery_tabs");
+    
+    galleryTriggerElements.forEach((trigger) => {
+      trigger.addEventListener("click", function () {
+        const targetCategory = trigger.getAttribute("data-gallery-id");
+        
+        // Store the manually selected gallery tab
+        if (gallerySystem.galleryTabState) {
+          gallerySystem.galleryTabState.setActiveGalleryTab(targetCategory);
+        }
+        
+        // Apply the gallery filter
+        if (gallerySystem.applyGalleryTabFilter) {
+          gallerySystem.applyGalleryTabFilter(targetCategory);
+        }
+      });
+    });
+  }, 500);
+  
+  window.gallerySystem = new GallerySystem();
 
   /******************************************************************************
    * TOPIC BANNER ANIMATION
