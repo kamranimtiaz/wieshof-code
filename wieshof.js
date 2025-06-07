@@ -10,6 +10,22 @@ const swiperAnimationConfig = {
   },
 };
 
+function createTopicSlug(topicName) {
+  if (!topicName) return '';
+  
+  return topicName
+    .toLowerCase()
+    .trim()
+    // Handle specific replacements first
+    .replace(/ & /g, "-")
+    .replace(/\(/g, "")           // Remove opening parentheses
+    .replace(/\)/g, "")           // Remove closing parentheses
+    .replace(/[^\w\s-]/g, "")     // Remove special characters except spaces and dashes
+    .replace(/\s+/g, "-")         // Replace spaces with dashes
+    .replace(/-+/g, "-")          // Replace multiple dashes with single dash
+    .replace(/^-|-$/g, "");       // Remove leading/trailing dashes
+}
+
 class GalleryDataParser {
   constructor() {
     this.cachedData = null;
@@ -24,8 +40,8 @@ class GalleryDataParser {
 
     topicItems.forEach((item) => {
       const topic = {
-        topicname: item.getAttribute("data-topic-name"),
-        galleryname: item.getAttribute("data-gallery-name"),
+        topicname: createTopicSlug(item.getAttribute("data-topic-name")),
+        galleryname: createTopicSlug(item.getAttribute("data-gallery-name")),
         images: {},
         heroImages: {},
         quoteImages: {},
@@ -420,8 +436,11 @@ class GalleryTabsRenderer {
       const textElement = clone.querySelector("p");
       if (textElement) {
         textElement.textContent = topic.galleryname;
-        textElement.setAttribute("data-gallery-id", topic.topicname);
-        textElement.setAttribute("data-topic-target", topic.topicname);
+        
+        // Use centralized slug function for consistency
+        const topicSlug = createTopicSlug(topic.topicname);
+        textElement.setAttribute("data-gallery-id", topicSlug);
+        textElement.setAttribute("data-topic-target", topicSlug);
       }
 
       this.container.appendChild(clone);
@@ -451,8 +470,9 @@ class GalleryImageRenderer {
       images.forEach((srcUrl) => {
         const slideClone = this.template.cloneNode(true);
         const slideImg = slideClone?.querySelector("img");
-        slideClone.setAttribute("data-gallery-id", topic.topicname);
-        slideClone.setAttribute("data-topic-target", topic.topicname);
+        const topicSlug = createTopicSlug(topic.topicname);
+        slideClone.setAttribute("data-gallery-id", topicSlug);
+        slideClone.setAttribute("data-topic-target", topicSlug);
 
         if (slideImg) {
           slideImg.src = srcUrl;
@@ -483,7 +503,6 @@ class GallerySwiperManager {
 
   init() {
     this.setupElements();
-    this.renderGallerySlides();
     this.initializeSwiper();
     this.setupEventListeners();
     this.updateActiveTab();
@@ -492,49 +511,6 @@ class GallerySwiperManager {
   setupElements() {
     this.triggerElements = document.querySelectorAll(".gallery_tabs");
     this.tabItems = document.querySelectorAll(".gallery_tabs-collection-item");
-  }
-
-  renderGallerySlides() {
-    const sliderEl = document.querySelector(".swiper.is-gallery");
-    if (!sliderEl) return;
-
-    const wrapper = sliderEl.querySelector(".swiper-wrapper.is-gallery");
-    if (!wrapper) return;
-
-    // Remove template slide
-    const templateSlide = wrapper.querySelector(".swiper-slide.is-gallery");
-    if (templateSlide) templateSlide.remove();
-
-    // Render slides from legacy data (for backwards compatibility)
-    const categoriesData = document.querySelectorAll(
-      ".gallery_collection-item .gallery_data"
-    );
-
-    categoriesData.forEach((categoryEl) => {
-      const categoryId = categoryEl.getAttribute("data-gallery-id");
-      const imageEls = categoryEl.querySelectorAll(
-        ".gallery_img-url[data-img-url]"
-      );
-      imageEls.forEach((imgEl) => {
-        const imgURL = imgEl.getAttribute("data-img-url");
-        if (imgURL) {
-          const slide = document.createElement("div");
-          slide.classList.add(
-            "swiper-slide",
-            "is-gallery",
-            "swiper-backface-hidden"
-          );
-          slide.setAttribute("data-gallery-id", categoryId);
-          slide.setAttribute("data-topic-target", categoryId.toLowerCase());
-          const img = document.createElement("img");
-          img.src = imgURL;
-          img.loading = "lazy";
-          img.classList.add("gallery_img");
-          slide.appendChild(img);
-          wrapper.appendChild(slide);
-        }
-      });
-    });
   }
 
   initializeSwiper() {
@@ -574,6 +550,9 @@ class GallerySwiperManager {
     this.swiper.on("slideChange", () => this.updateActiveTab());
   }
 
+  normalizeTopicForComparison(topic) {
+  return createTopicSlug(topic);
+}
   setupEventListeners() {
     this.triggerElements.forEach((trigger) => {
       trigger.addEventListener("click", () => {
@@ -608,6 +587,7 @@ class GallerySwiperManager {
     // Update current active tab to match topic
     this.currentActiveTab = selectedTopic.toLowerCase();
   }
+
   // Get current gallery tab
   getCurrentActiveTab() {
     const activeTab = document.querySelector(".gallery_tabs.is-custom-current");
@@ -620,6 +600,8 @@ class GallerySwiperManager {
   // Separate navigation logic
   navigateToTab(targetCategory) {
     const wrapper = document.querySelector(".swiper-wrapper.is-gallery");
+    if (!wrapper) return;
+    
     const allSlides = wrapper.querySelectorAll(".swiper-slide.is-gallery");
     let targetIndex = 0;
 
@@ -662,11 +644,15 @@ class GallerySwiperManager {
       }
     }
   }
+
   updateSeason(newSeason) {
     // Store current active tab BEFORE any changes
     const activeTabBeforeDestroy = this.getCurrentActiveTab();
     
     this.season = newSeason;
+    
+    // Re-initialize swiper without rendering
+    // (rendering is handled by GalleryImageRenderer)
     this.destroy();
     this.init();
     
@@ -688,52 +674,69 @@ class GallerySwiperManager {
   }
 
   findSlideIndexByTopic(selectedTopic) {
-    let targetIndex = 0;
-    this.swiper.slides.forEach((slide, idx) => {
-      const slideTopic = (
-        slide.getAttribute("data-topic-target") ||
-        slide.getAttribute("data-gallery-id") ||
-        ""
-      ).toLowerCase();
-      if (slideTopic === selectedTopic && targetIndex === 0) {
-        targetIndex = idx;
-      }
-    });
-    return targetIndex;
-  }
+  if (!this.swiper || !this.swiper.slides) return 0;
+  
+  const normalizedSelectedTopic = this.normalizeTopicForComparison(selectedTopic);
+  
+  let targetIndex = 0;
+  this.swiper.slides.forEach((slide, idx) => {
+    const slideTopic = slide.getAttribute("data-topic-target") ||
+                      slide.getAttribute("data-gallery-id") ||
+                      "";
+    const normalizedSlideTopic = this.normalizeTopicForComparison(slideTopic);
+    
+    if (normalizedSlideTopic === normalizedSelectedTopic && targetIndex === 0) {
+      targetIndex = idx;
+    }
+  });
+  return targetIndex;
+}
 
   updateTabSelection(selectedTopic) {
-    this.triggerElements.forEach((tab) => {
-      tab.classList.remove("is-custom-current");
-      const tabTopic = (
-        tab.getAttribute("data-topic-target") ||
-        tab.getAttribute("data-gallery-id") ||
-        ""
-      ).toLowerCase();
+  const normalizedSelectedTopic = this.normalizeTopicForComparison(selectedTopic);
+  
+  this.triggerElements.forEach((tab) => {
+    tab.classList.remove("is-custom-current");
+    const tabTopic = tab.getAttribute("data-topic-target") ||
+                    tab.getAttribute("data-gallery-id") ||
+                    "";
+    const normalizedTabTopic = this.normalizeTopicForComparison(tabTopic);
 
-      if (tabTopic === selectedTopic) {
-        tab.classList.add("is-custom-current");
-      }
+    if (normalizedTabTopic === normalizedSelectedTopic) {
+      tab.classList.add("is-custom-current");
+    }
 
-      const parentTab = tab.closest('[role="tab"]');
-      if (parentTab) {
-        parentTab.setAttribute(
-          "aria-selected",
-          tabTopic === selectedTopic ? "true" : "false"
-        );
-        tab.removeAttribute("aria-selected");
-      } else {
-        tab.setAttribute(
-          "aria-selected",
-          tabTopic === selectedTopic ? "true" : "false"
-        );
-      }
-    });
-  }
+    const parentTab = tab.closest('[role="tab"]');
+    if (parentTab) {
+      parentTab.setAttribute(
+        "aria-selected",
+        normalizedTabTopic === normalizedSelectedTopic ? "true" : "false"
+      );
+      tab.removeAttribute("aria-selected");
+    } else {
+      tab.setAttribute(
+        "aria-selected",
+        normalizedTabTopic === normalizedSelectedTopic ? "true" : "false"
+      );
+    }
+  });
+}
 
   updateActiveTab() {
+    // Add safety checks for swiper initialization
+    if (!this.swiper || !this.swiper.slides || this.swiper.slides.length === 0) {
+      return;
+    }
+
     const activeSlide = this.swiper.slides[this.swiper.activeIndex];
+    if (!activeSlide) {
+      return;
+    }
+
     const activeCategory = activeSlide.getAttribute("data-gallery-id");
+    if (!activeCategory) {
+      return;
+    }
 
     // Update current active tab
     this.currentActiveTab = activeCategory;
@@ -751,6 +754,7 @@ class GallerySwiperManager {
     }
   }
 }
+
 
 class QuoteImageManager {
   constructor(galleryData, season = "summer") {
@@ -881,10 +885,8 @@ class TopicRenderer {
       const button = clone.querySelector("[data-topic]");
       const textElement = clone.querySelector("p");
 
-      const topicSlug = topic.topicname
-        .toLowerCase()
-        .replace(/ & /g, "-")
-        .replace(/\s+/g, "-");
+      // Use centralized slug function
+      const topicSlug = createTopicSlug(topic.topicname);
       button.setAttribute("data-topic", topicSlug);
 
       if (textElement) {
@@ -895,6 +897,7 @@ class TopicRenderer {
     });
   }
 }
+
 
 class SeasonSwitchManager {
   constructor(gallerySystem) {
