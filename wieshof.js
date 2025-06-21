@@ -38,6 +38,8 @@ class GalleryDataParser {
     const dataSource = document.querySelector(".data-source");
     const topicItems = dataSource.querySelectorAll("[data-topic-name]");
 
+
+
     topicItems.forEach((item) => {
       const topic = {
         topicname: createTopicSlug(item.getAttribute("data-topic-name")),
@@ -89,6 +91,7 @@ class GalleryDataParser {
     });
 
     return (this.cachedData = result);
+
   }
 
   getSeasonImages(topicName, season) {
@@ -124,6 +127,172 @@ class GalleryDataParser {
   }
 }
 
+// class HeroImageManager {
+//   constructor(galleryData, season = "summer") {
+//     this.data = galleryData;
+//     this.season = season;
+//     this.topicToImageMap = this.buildImageMap();
+//     this.heroImg = document.querySelector(".hero_img");
+//     this.currentTopic = null;
+//     this.hasLoadedInitialImage = false;
+//     this.imageCache = new Map();
+//     this.isTransitioning = false;
+    
+//     this.init();
+//   }
+
+//   buildImageMap() {
+//     const imageMap = {};
+//     this.data.forEach((topic) => {
+//       const topicKey = topic.topicname.toLowerCase();
+//       const heroImage = topic.heroImages?.[this.season];
+//       if (heroImage) {
+//         imageMap[topicKey] = heroImage;
+//       }
+//     });
+//     return imageMap;
+//   }
+
+//   preloadImages() {
+//     Object.entries(this.topicToImageMap).forEach(([topic, imageUrl]) => {
+//       if (!this.imageCache.has(imageUrl)) {
+//         const img = new Image();
+//         img.src = imageUrl;
+//         img.onload = () => {
+//           this.imageCache.set(imageUrl, img);
+//         };
+//         img.onerror = () => {
+//           console.warn(`Failed to preload hero image: ${imageUrl}`);
+//         };
+//       }
+//     });
+//   }
+
+//   updateSeason(newSeason, currentTopic = null) {
+//     this.season = newSeason;
+//     this.topicToImageMap = this.buildImageMap();
+//     this.preloadImages();
+
+//     if (!this.hasLoadedInitialImage) return;
+
+//     const topicToCheck = currentTopic || this.currentTopic;
+//     if (topicToCheck && this.topicToImageMap[topicToCheck.toLowerCase()]) {
+//       this.loadHeroImage(topicToCheck.toLowerCase(), true);
+//     }
+//   }
+
+//   init() {
+//     if (!this.heroImg) return;
+//     this.preloadImages();
+//     this.handleInitialTopic();
+//     this.setupTopicChangeListener();
+//   }
+
+//   handleInitialTopic() {
+//     const urlParams = new URLSearchParams(window.location.search);
+//     const paramTopic = urlParams.get("topic");
+//     console.log(paramTopic);
+//     if (paramTopic && this.topicToImageMap[paramTopic.toLowerCase()]) {
+//       this.currentTopic = paramTopic.toLowerCase();
+//     }
+
+//     this.showHeroImage();
+
+//     setTimeout(() => {
+//       this.hasLoadedInitialImage = true;
+//     }, 100);
+//   }
+
+//   setupTopicChangeListener() {
+//     document.addEventListener("topicChange", (e) => {
+//       const selectedTopic = e.detail.topic.toLowerCase();
+//       this.currentTopic = selectedTopic;
+
+//       if (this.hasLoadedInitialImage && this.topicToImageMap[selectedTopic]) {
+//         this.loadHeroImage(selectedTopic, true);
+//       }
+//     });
+//   }
+
+//   loadHeroImage(topicKey, animated = false) {
+//     if (this.isTransitioning) return;
+    
+//     const imageUrl = this.topicToImageMap[topicKey];
+//     if (!imageUrl || !this.heroImg) return;
+
+//     this.isTransitioning = true;
+
+//     if (this.imageCache.has(imageUrl)) {
+//       this.performFadeTransition(imageUrl, animated);
+//     } else {
+//       const tempImg = new Image();
+//       tempImg.src = imageUrl;
+
+//       tempImg.onload = () => {
+//         this.imageCache.set(imageUrl, tempImg);
+//         this.performFadeTransition(imageUrl, animated);
+//       };
+
+//       tempImg.onerror = () => {
+//         console.warn(`Failed to load hero image for topic: ${topicKey}`);
+//         this.isTransitioning = false;
+//         this.showHeroImage();
+//       };
+//     }
+//   }
+
+//   performFadeTransition(imageUrl, animated) {
+//     if (!animated) {
+//       // No animation - just set image directly
+//       this.heroImg.removeAttribute("srcset");
+//       this.heroImg.removeAttribute("sizes");
+//       this.heroImg.src = imageUrl;
+//       this.heroImg.style.opacity = '1';
+//       this.isTransitioning = false;
+//       return;
+//     }
+
+//     // Step 1: Fade out
+//     this.heroImg.style.opacity = '0';
+    
+//     // Step 2: Change image while invisible, then fade in with scale
+//     setTimeout(() => {
+//       // Remove scale class while invisible
+//       this.heroImg.classList.remove("scaleup");
+      
+//       // Change image
+//       this.heroImg.removeAttribute("srcset");
+//       this.heroImg.removeAttribute("sizes");
+//       this.heroImg.src = imageUrl;
+      
+//       // Force reflow to ensure class is removed
+//       void this.heroImg.offsetWidth;
+      
+//       // Add scale class back for new image (forces restart)
+//       this.heroImg.classList.add("scaleup");
+      
+//       // Fade back in
+//       this.heroImg.style.opacity = '1';
+      
+//       this.isTransitioning = false;
+//     }, 200);
+//   }
+
+//   showHeroImage() {
+//     if (this.heroImg) {
+//       this.heroImg.style.visibility = "visible";
+//       if (!this.isTransitioning) {
+//         this.heroImg.style.opacity = "1";
+//       }
+//     }
+//   }
+
+//   getCurrentTopic() {
+//     return this.currentTopic;
+//   }
+// }
+
+
 class HeroImageManager {
   constructor(galleryData, season = "summer") {
     this.data = galleryData;
@@ -131,35 +300,48 @@ class HeroImageManager {
     this.topicToImageMap = this.buildImageMap();
     this.heroImg = document.querySelector(".hero_img");
     this.currentTopic = null;
-    this.hasLoadedInitialImage = false; // Flag to prevent initial loading
+    this.hasLoadedInitialImage = false;
+    this.imageCache = new Map();
+    this.isTransitioning = false;
+    
     this.init();
   }
 
   buildImageMap() {
     const imageMap = {};
-
     this.data.forEach((topic) => {
       const topicKey = topic.topicname.toLowerCase();
       const heroImage = topic.heroImages?.[this.season];
-
       if (heroImage) {
         imageMap[topicKey] = heroImage;
       }
     });
-
     return imageMap;
+  }
+
+  preloadImages() {
+    Object.entries(this.topicToImageMap).forEach(([topic, imageUrl]) => {
+      if (!this.imageCache.has(imageUrl)) {
+        const img = new Image();
+        img.src = imageUrl;
+        img.onload = () => {
+          this.imageCache.set(imageUrl, img);
+        };
+        img.onerror = () => {
+          console.warn(`Failed to preload hero image: ${imageUrl}`);
+        };
+      }
+    });
   }
 
   updateSeason(newSeason, currentTopic = null) {
     this.season = newSeason;
     this.topicToImageMap = this.buildImageMap();
+    this.preloadImages();
 
-    // Only load image if initial loading period has passed
     if (!this.hasLoadedInitialImage) return;
 
-    // Use the instance's currentTopic if no topic is passed
     const topicToCheck = currentTopic || this.currentTopic;
-
     if (topicToCheck && this.topicToImageMap[topicToCheck.toLowerCase()]) {
       this.loadHeroImage(topicToCheck.toLowerCase(), true);
     }
@@ -167,6 +349,7 @@ class HeroImageManager {
 
   init() {
     if (!this.heroImg) return;
+    this.preloadImages();
     this.handleInitialTopic();
     this.setupTopicChangeListener();
   }
@@ -175,18 +358,33 @@ class HeroImageManager {
     const urlParams = new URLSearchParams(window.location.search);
     const paramTopic = urlParams.get("topic");
 
-    if (paramTopic && this.topicToImageMap[paramTopic.toLowerCase()]) {
-      this.currentTopic = paramTopic.toLowerCase();
-      // Don't load hero image at start due to hasLoadedInitialImage flag
-    }
-
-    // Always show the hero image element (with placeholder)
     this.showHeroImage();
 
-    // Set flag to true after initial launch to allow normal functionality
     setTimeout(() => {
       this.hasLoadedInitialImage = true;
-    }, 100);
+      
+      // If URL has topic parameter, click the corresponding topic button
+      if (paramTopic) {
+        this.clickTopicButton(paramTopic.toLowerCase());
+      }
+    }, 500); // Longer delay to ensure topic buttons are rendered
+  }
+
+  clickTopicButton(topicSlug) {
+    // Find the topic button with matching data-topic attribute
+    const topicButton = document.querySelector(`[data-topic="${topicSlug}"]`);
+    
+    if (topicButton) {
+      console.log(`🎯 Clicking topic button for: ${topicSlug}`);
+      topicButton.click();
+    } else {
+      console.warn(`⚠️ Topic button not found for: ${topicSlug}`);
+      // Debug: Show available buttons
+      const allButtons = document.querySelectorAll('[data-topic]');
+      console.log('Available topic buttons:', 
+        Array.from(allButtons).map(btn => btn.getAttribute('data-topic'))
+      );
+    }
   }
 
   setupTopicChangeListener() {
@@ -194,7 +392,6 @@ class HeroImageManager {
       const selectedTopic = e.detail.topic.toLowerCase();
       this.currentTopic = selectedTopic;
 
-      // Only load image if initial loading period has passed
       if (this.hasLoadedInitialImage && this.topicToImageMap[selectedTopic]) {
         this.loadHeroImage(selectedTopic, true);
       }
@@ -202,36 +399,75 @@ class HeroImageManager {
   }
 
   loadHeroImage(topicKey, animated = false) {
+    if (this.isTransitioning) return;
+    
     const imageUrl = this.topicToImageMap[topicKey];
     if (!imageUrl || !this.heroImg) return;
 
-    const tempImg = new Image();
-    tempImg.src = imageUrl;
+    this.isTransitioning = true;
 
-    tempImg.onload = () => {
+    if (this.imageCache.has(imageUrl)) {
+      this.performFadeTransition(imageUrl, animated);
+    } else {
+      const tempImg = new Image();
+      tempImg.src = imageUrl;
+
+      tempImg.onload = () => {
+        this.imageCache.set(imageUrl, tempImg);
+        this.performFadeTransition(imageUrl, animated);
+      };
+
+      tempImg.onerror = () => {
+        console.warn(`Failed to load hero image for topic: ${topicKey}`);
+        this.isTransitioning = false;
+        this.showHeroImage();
+      };
+    }
+  }
+
+  performFadeTransition(imageUrl, animated) {
+    if (!animated) {
+      // No animation - just set image directly
       this.heroImg.removeAttribute("srcset");
       this.heroImg.removeAttribute("sizes");
       this.heroImg.src = imageUrl;
+      this.heroImg.style.opacity = '1';
+      this.isTransitioning = false;
+      return;
+    }
 
-      if (animated) {
-        this.heroImg.classList.remove("scaleup");
-        void this.heroImg.offsetWidth;
-        this.heroImg.classList.add("scaleup");
-      }
-
-      this.showHeroImage();
-    };
-
-    tempImg.onerror = () => {
-      console.warn(`Failed to load hero image for topic: ${topicKey}`);
-      this.showHeroImage();
-    };
+    // Step 1: Fade out
+    this.heroImg.style.opacity = '0';
+    
+    // Step 2: Change image while invisible, then fade in with scale
+    setTimeout(() => {
+      // Remove scale class while invisible
+      this.heroImg.classList.remove("scaleup");
+      
+      // Change image
+      this.heroImg.removeAttribute("srcset");
+      this.heroImg.removeAttribute("sizes");
+      this.heroImg.src = imageUrl;
+      
+      // Force reflow to ensure class is removed
+      void this.heroImg.offsetWidth;
+      
+      // Add scale class back for new image (forces restart)
+      this.heroImg.classList.add("scaleup");
+      
+      // Fade back in
+      this.heroImg.style.opacity = '1';
+      
+      this.isTransitioning = false;
+    }, 200);
   }
 
   showHeroImage() {
     if (this.heroImg) {
       this.heroImg.style.visibility = "visible";
-      this.heroImg.style.opacity = "1";
+      if (!this.isTransitioning) {
+        this.heroImg.style.opacity = "1";
+      }
     }
   }
 
@@ -327,39 +563,53 @@ class TopicSwiperManager {
   }
 
   handleTopicClick(trigger) {
-    // Reset visual feedback for all triggers
-    this.triggers.forEach((btn) => {
-      btn.classList.remove("is-active");
-    });
+  // Reset visual feedback for all triggers
+  this.triggers.forEach((btn) => {
+    btn.classList.remove("is-active");
+  });
 
-    // Reset ARIA attributes on tab elements
-    this.tabItems.forEach((tabItem) => {
-      if (tabItem) {
-        tabItem.setAttribute("aria-selected", "false");
-      }
-    });
-
-    // Set visual feedback for active trigger
-    trigger.classList.add("is-active");
-
-    // Set ARIA attributes for parent tab element
-    const parentTabItem = trigger.closest(".swiper-slide");
-    if (parentTabItem) {
-      parentTabItem.setAttribute("aria-selected", "true");
+  // Reset ARIA attributes on tab elements
+  this.tabItems.forEach((tabItem) => {
+    if (tabItem) {
+      tabItem.setAttribute("aria-selected", "false");
     }
+  });
 
-    const topic = trigger.getAttribute("data-topic").toLowerCase();
-    this.currentTopic = topic;
+  // Set visual feedback for active trigger
+  trigger.classList.add("is-active");
 
-    const evt = new CustomEvent("topicChange", {
-      detail: { topic, manual: true },
-    });
-    document.dispatchEvent(evt);
-
-    // Slide to active topic
-    const index = Array.from(this.triggers).findIndex((btn) => btn === trigger);
-    this.swiper.slideTo(index);
+  // Set ARIA attributes for parent tab element
+  const parentTabItem = trigger.closest(".swiper-slide");
+  if (parentTabItem) {
+    parentTabItem.setAttribute("aria-selected", "true");
   }
+
+  const topic = trigger.getAttribute("data-topic").toLowerCase();
+  this.currentTopic = topic;
+
+  // UPDATE URL PARAMETER
+  this.updateURLParameter(topic);
+
+  const evt = new CustomEvent("topicChange", {
+    detail: { topic, manual: true },
+  });
+  document.dispatchEvent(evt);
+
+  // Slide to active topic
+  const index = Array.from(this.triggers).findIndex((btn) => btn === trigger);
+  this.swiper.slideTo(index);
+}
+
+// Add this new method to TopicSwiperManager class
+updateURLParameter(topic) {
+  const url = new URL(window.location);
+  url.searchParams.set('topic', topic);
+  
+  // Update URL without page reload
+  window.history.pushState({ topic }, '', url);
+  
+  console.log(`📍 Updated URL parameter: topic=${topic}`);
+}
 
   setupDefaultTopic() {
     const urlParams = new URLSearchParams(window.location.search);
